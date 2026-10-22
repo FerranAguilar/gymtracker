@@ -409,5 +409,8 @@ div.tile-v{display:block}
 .f-top{gap:6px}
 .f-tech{display:inline-flex;align-items:center;gap:5px;background:var(--bg);border:0;border-radius:999px;padding:8px 12px;min-height:40px;font-weight:700;font-size:.9rem;color:var(--ink)}
 .f-tech svg{width:17px;height:17px}
+.set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 6px;font-weight:650}
+.seg-sm{flex:none;min-width:220px}
+.seg-sm button{padding:7px 8px}
 .sync-note{margin:10px 2px 0;text-align:center}
 @media (min-width:700px){.st-row{max-width:420px;margin:0 auto}}

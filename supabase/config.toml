@@ -1,0 +1,4 @@
+# La función "push" hace su propia validación (lista de servicios push permitidos y
+# secreto interno para el envío), así que no exige el JWT de Supabase.
+[functions.push]
+verify_jwt = false

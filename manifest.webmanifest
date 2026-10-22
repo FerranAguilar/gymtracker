@@ -1,6 +1,6 @@
 {
-  "name": "Serie: cuaderno de gimnasio",
-  "short_name": "Serie",
+  "name": "GymTracker",
+  "short_name": "GymTracker",
   "description": "Rutinas, series, descansos y progreso de tus entrenamientos.",
   "lang": "es",
   "start_url": "./",

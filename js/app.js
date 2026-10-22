@@ -535,7 +535,7 @@ function allEx(){ return CATALOG.concat(S.library); }
 function exById(id){ return allEx().find(e=>e.id===id) || {id, name:'Ejercicio eliminado', group:'core', muscle:'', equip:'otro', bar:false}; }
 
 /* ---------- Storage (db in your Claude account, browser as fallback) ---------- */
-const LS = 'serie:';
+const LS = 'serie:'; // prefijo interno heredado del nombre anterior: no cambiarlo o se pierden los datos guardados
 function lsGet(k){ try{ const v=localStorage.getItem(LS+k); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function lsSet(k,v){ try{ if(v==null) localStorage.removeItem(LS+k); else localStorage.setItem(LS+k, JSON.stringify(v)); }catch(e){} }
 
@@ -1118,19 +1118,38 @@ function openExDetail(id){
 
 /* ---------- Settings ---------- */
 let downloads=null;
+function pushRowHTML(){
+  const s=pushStatus();
+  const txt={
+    on:'Activadas. Te avisaré cuando acabe el descanso aunque tengas el móvil bloqueado o estés en otra app.',
+    off:'Te avisan cuando acaba el descanso aunque tengas el móvil bloqueado o estés en otra app.',
+    denied:'Has bloqueado las notificaciones de GymTracker. Para usarlas, actívalas en los ajustes del navegador o del sistema.',
+    'ios-install':'En iPhone y iPad, primero añade GymTracker a la pantalla de inicio (botón Compartir → Añadir a pantalla de inicio) y ábrela desde allí.',
+    unsupported:'Este navegador no admite notificaciones push.',
+    claude:'Las notificaciones solo funcionan en la versión instalada de GymTracker.'
+  }[s];
+  const btn = s==='on' ? '<div class="row-gap"><button class="btn btn-quiet" data-act="push-test">Enviar una prueba</button><button class="btn btn-text" data-act="push-off">Desactivar</button></div>'
+    : s==='off' ? '<button class="btn btn-primary" data-act="push-on">Activar notificaciones</button>' : '';
+  return `<div class="set-row"><span>Notificaciones</span></div><p class="muted small" style="margin:0 0 10px">${txt}</p>${btn}`;
+}
 function openSettings(){
   const st=S.settings;
   openModal(`<div class="sheet-head"><h2>Ajustes</h2><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div><div class="sheet-body">
     <div class="field"><span>Peso de la barra</span><div class="seg">${[20,15,10].map(b=>`<button data-act="set-bar" data-v="${b}" aria-pressed="${num(st.bar)===b}">${b} kg</button>`).join('')}</div></div>
     <div class="field"><span>Descanso por defecto entre series</span><div class="seg">${[60,90,120,180].map(b=>`<button data-act="set-rest" data-v="${b}" aria-pressed="${num(st.rest)===b}">${b<120?b+' s':(b/60)+' min'}</button>`).join('')}</div></div>
+    <div class="field"><span>Avisos del descanso</span>
+      <div class="set-row"><span>Sonido</span><div class="seg seg-sm">${[['1','Activado'],['0','Desactivado']].map(([v,l])=>`<button data-act="set-sound" data-v="${v}" aria-pressed="${(st.sound!==false?'1':'0')===v}">${l}</button>`).join('')}</div></div>
+      ${st.sound!==false?'<button class="btn btn-text" data-act="test-sound">Probar el sonido</button>':''}
+      <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y al terminar. Suena con la app en pantalla; en iPhone no suena con el modo silencio activado.</p>
+      ${pushRowHTML()}</div>
     <div class="field"><span>Tus datos</span><p style="margin:0 0 12px" class="small">${S.mode==='db'?'Se guardan en tu cuenta y solo tú puedes verlos, aunque compartas el enlace de esta página.':'Se guardan solo en este navegador. Exporta una copia de vez en cuando para no perderlos.'}</p>
       <div class="row-gap"><button class="btn btn-quiet" data-act="export">Exportar copia</button><label class="btn btn-quiet" style="cursor:pointer">Importar copia<input type="file" accept=".json,application/json" data-ch="import" hidden></label></div></div>
     <p class="muted small" style="margin:8px 0 0">El 1RM estimado usa la fórmula de Epley: peso × (1 + reps / 30).</p>
   </div>`);
 }
 async function doExport(){
-  const data={app:'serie', version:1, exported:Date.now(), library:S.library, routines:S.routines, sessions:S.sessions, settings:S.settings};
-  const filename=`serie-copia-${new Date().toISOString().slice(0,10)}.json`, text=JSON.stringify(data,null,1);
+  const data={app:'gymtracker', version:1, exported:Date.now(), library:S.library, routines:S.routines, sessions:S.sessions, settings:S.settings};
+  const filename=`gymtracker-copia-${new Date().toISOString().slice(0,10)}.json`, text=JSON.stringify(data,null,1);
   if(downloads){
     try{ await downloads.save({filename, data:text}); toast('Copia exportada.'); }
     catch(e){ if(e&&e.code!=='declined') toast('No se pudo exportar la copia.'); }
@@ -1144,7 +1163,7 @@ async function doExport(){
 }
 async function doImport(file){
   let d; try{ d=JSON.parse(await file.text()); }catch(e){ toast('El archivo no es una copia válida.'); return; }
-  if(!d||d.app!=='serie'||!Array.isArray(d.sessions)){ toast('El archivo no es una copia de Serie.'); return; }
+  if(!d||!['gymtracker','serie'].includes(d.app)||!Array.isArray(d.sessions)){ toast('El archivo no es una copia de GymTracker.'); return; }
   closeModal();
   const ok=await ask('Importar copia', `Se añadirán ${d.sessions.length} entrenos y ${(d.routines||[]).length} rutinas a los que ya tienes. Los que coincidan se reemplazarán.`, 'Importar', false);
   if(!ok) return;
@@ -1161,7 +1180,7 @@ async function doImport(file){
 /* ---------- Timers & set-by-set mode ---------- */
 let tick=null;
 function startTickers(){ if(tick) return; tick=setInterval(()=>{ updateTimes(); tickFocus(); if(!S.active){ clearInterval(tick); tick=null; } },250); }
-function stopRest(){ if(S.active) S.active.focus=null; renderFocus(); }
+function stopRest(){ if(S.active){ cancelRestPush(S.active.focus); S.active.focus=null; } renderFocus(); }
 function vib(p){ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} }
 function ensureKeys(){ if(S.active) S.active.exercises.forEach(e=>{ if(!e.k) e.k=uid(); }); }
 function F(){ return S.active ? S.active.focus : null; }
@@ -1200,11 +1219,13 @@ function finishSet(){
   }
   if(nx.k===ex.k){ const ns=ex.sets[nx.si]; fieldsOf(c.m).forEach(k=>{ if(ns[k]===''||ns[k]==null) ns[k]=s[k]; }); }
   const total=restFor(ex);
-  Object.assign(f,{phase:'rest', restTotal:total, restEnd:Date.now()+total*1000, next:nx});
+  Object.assign(f,{phase:'rest', restTotal:total, restEnd:Date.now()+total*1000, next:nx, beep:null});
   saveActive(); render(); renderFocus();
+  scheduleRestPush(f);
 }
 function goNext(auto){
   const f=F(); if(!f||!f.next) return;
+  if(!auto) cancelRestPush(f);
   const nx=f.next;
   if(fIdx(nx.k)<0){ S.active.focus=null; }
   else S.active.focus={k:nx.k, si:nx.si, phase:'set', open:f.open};
@@ -1216,6 +1237,7 @@ function adjRest(d){
   f.restEnd=Math.max(Date.now()+1000, f.restEnd+d*1000);
   f.restTotal=Math.max(f.restTotal,(f.restEnd-Date.now())/1000);
   saveActive(); tickFocus();
+  if(f.pushId && (f.restEnd-Date.now())/1000>PUSH_CANCEL_BEFORE) scheduleRestPush(f);
 }
 function renderFocus(){
   const box=$('#focus'), bar=$('#restbar'); if(!box) return;
@@ -1284,7 +1306,11 @@ function tickFocus(){
   const f=F(); if(!f) return;
   if(f.phase==='set'){ if(f.sw){ const v=clock(swElapsed(f)); const a=$('#f-tdisp'); if(a) a.textContent=v; const ms=$('#mini-sw'); if(ms) ms.textContent=v; } return; }
   const left=(f.restEnd-Date.now())/1000;
-  if(left<=0){ goNext(true); return; }
+  const visible=document.visibilityState==='visible';
+  if(left<=0){ if(left>-3) soundEnd(); goNext(true); return; }
+  const sec=Math.ceil(left);
+  if(sec<=3 && f.beep!==sec && visible){ f.beep=sec; soundTick(); }
+  if(left<=PUSH_CANCEL_BEFORE && visible) cancelRestPush(f,true);
   const t=clock(Math.ceil(left)), pct=Math.max(0,Math.min(1,left/f.restTotal));
   const a=$('#f-time'); if(a) a.textContent=t;
   const r=$('#f-ring'); if(r){ r.style.strokeDashoffset=String(628.3*(1-pct)); r.classList.toggle('soon', left<=5); }
@@ -1292,6 +1318,94 @@ function tickFocus(){
   const mf=$('#mini-fill'); if(mf) mf.style.width=(pct*100)+'%';
 }
 function fRefresh(c, fields){ if(fields) syncSets(c.ex, c.si, fields); const pl=$('#f-plates'); if(pl) pl.innerHTML=platesHTML(c.ex,c.s); saveActive(); render(); }
+
+/* ---------- Avisos del descanso: sonido y notificaciones push ---------- */
+const PUSH_URL = 'https://tdtezlgausvwlnnjibuo.supabase.co/functions/v1/push';
+
+/* Sonido: el navegador solo deja sonar audio después de un toque del usuario,
+   así que el contexto de audio se desbloquea con el primer toque en la app. */
+let audioCtx=null;
+function unlockAudio(){
+  try{
+    if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); }
+    if(audioCtx.state==='suspended') audioCtx.resume();
+  }catch(e){}
+}
+['pointerdown','keydown'].forEach(t=>document.addEventListener(t,unlockAudio,{passive:true}));
+function beep(freq, dur, at=0, vol=.35){
+  if(!audioCtx||audioCtx.state!=='running') return;
+  try{
+    const t=audioCtx.currentTime+at, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+dur+0.03);
+  }catch(e){}
+}
+const soundOn=()=>S.settings.sound!==false;
+function soundTick(){ if(soundOn()) beep(880,.12); }
+function soundEnd(){ if(soundOn()){ beep(1175,.18,0,.45); beep(1568,.32,.2,.45); } }
+
+/* Notificaciones push: funcionan con la app instalada (en el móvil, añadida a la pantalla de inicio). */
+const isIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isStandalone=()=>!!(window.navigator.standalone||matchMedia('(display-mode: standalone)').matches);
+function pushStatus(){
+  if(window.claude) return 'claude';
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)) return isIOS()&&!isStandalone()?'ios-install':'unsupported';
+  if(!window.isSecureContext) return 'unsupported';
+  if(Notification.permission==='denied') return 'denied';
+  return S.settings.push&&Notification.permission==='granted'?'on':'off';
+}
+function b64ToBytes(s){ const p='='.repeat((4-s.length%4)%4), b=atob((s+p).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(b,c=>c.charCodeAt(0)); }
+async function pushCall(body){
+  const r=await fetch(PUSH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),keepalive:true});
+  if(!r.ok) throw new Error('push '+r.status);
+  return r.json();
+}
+async function pushSub(){ try{ const reg=await navigator.serviceWorker.ready; return await reg.pushManager.getSubscription(); }catch(e){ return null; } }
+async function enablePush(){
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ toast(perm==='denied'?'Has bloqueado las notificaciones. Actívalas en los ajustes del navegador.':'No se han activado las notificaciones.'); openSettings(); return; }
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){ const {publicKey}=await pushCall({action:'key'}); sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64ToBytes(publicKey)}); }
+    S.settings.push=true; saveSettings(); toast('Notificaciones activadas.');
+  }catch(e){ toast('No se pudieron activar las notificaciones. Revisa la conexión y prueba otra vez.'); }
+  openSettings();
+}
+async function disablePush(){
+  const sub=await pushSub(); try{ if(sub) await sub.unsubscribe(); }catch(e){}
+  S.settings.push=false; saveSettings(); toast('Notificaciones desactivadas.'); openSettings();
+}
+async function testPush(){
+  const sub=await pushSub(); if(!sub){ toast('Activa antes las notificaciones.'); return; }
+  try{ await pushCall({action:'schedule', id:alarmId(), subscription:sub.toJSON(), delay:5, title:'Prueba de GymTracker', body:'Así te avisaré cuando termine el descanso.'}); toast('Te llegará una notificación en unos segundos. Puedes bloquear el móvil.'); }
+  catch(e){ toast('No se pudo programar la prueba.'); }
+}
+const alarmId=()=>(crypto.randomUUID?crypto.randomUUID().replace(/-/g,''):uid()+uid()+uid()).slice(0,32);
+
+/* El aviso se programa en el servidor al empezar el descanso. Si la app sigue en pantalla
+   al final, la propia app suena y cancela el aviso para que no llegue repetido. */
+const PUSH_CANCEL_BEFORE=8;  // segundos
+async function scheduleRestPush(f){
+  if(pushStatus()!=='on'||!f||f.phase!=='rest') return;
+  const left=(f.restEnd-Date.now())/1000; if(left<4) return;
+  const sub=await pushSub(); if(!sub) return;
+  const nx=f.next, nex=nx&&S.active&&S.active.exercises[fIdx(nx.k)], nm=nex&&exById(nex.exId);
+  const body=nm?`Siguiente: ${nm.name}, ${word(nm)} ${nx.si+1} de ${nex.sets.length}`:'Empieza la siguiente serie.';
+  const id=f.pushId||alarmId(); f.pushId=id; f.pushCancelled=false; saveActive();
+  try{ await pushCall({action:'schedule', id, subscription:sub.toJSON(), delay:Math.round(left), title:'Descanso terminado', body}); }catch(e){}
+}
+function cancelRestPush(f, keepId){
+  if(!f||!f.pushId||f.pushCancelled) return;
+  const id=f.pushId; f.pushCancelled=true; if(!keepId) f.pushId=null;
+  pushCall({action:'cancel', id}).catch(()=>{});
+}
+/* Si la app pasa a segundo plano después de cancelar el aviso, se vuelve a programar */
+document.addEventListener('visibilitychange',()=>{
+  const f=F&&S.active?F():null; if(!f||f.phase!=='rest') return;
+  if(document.visibilityState==='hidden' && f.pushId && f.pushCancelled) scheduleRestPush(f);
+});
 
 /* ---------- Actions ---------- */
 const A = {
@@ -1314,7 +1428,7 @@ const A = {
   'ex-start'(el){ const ei=+el.dataset.ei; ensureKeys(); const f=F(); if(f&&f.k===S.active.exercises[ei].k){ f.open=true; saveActive(); renderFocus(); return; } startExercise(ei); },
   'f-hide'(){ const f=F(); if(f){ f.open=false; saveActive(); renderFocus(); } },
   'f-open'(){ const f=F(); if(f){ f.open=true; saveActive(); renderFocus(); } },
-  'f-stop'(){ S.active.focus=null; saveActive(); renderFocus(); render(); },
+  'f-stop'(){ cancelRestPush(S.active.focus); S.active.focus=null; saveActive(); renderFocus(); render(); },
   'f-done'(){ finishSet(); },
   'f-next'(){ goNext(false); },
   'f-adj'(el){ adjRest(num(el.dataset.v)); },
@@ -1372,6 +1486,11 @@ const A = {
   async 'ex-hide'(el){ const e=S.library.find(x=>x.id===el.dataset.id); if(!e) return;
     if(!(await ask('Eliminar ejercicio',`«${e.name}» dejará de aparecer en la lista. Tus entrenos y rutinas que lo usan se conservan.`,'Eliminar',true))) return;
     e.hidden=true; saveLibrary(); render(); },
+  'set-sound'(el){ S.settings.sound=el.dataset.v==='1'; saveSettings(); unlockAudio(); if(S.settings.sound) soundEnd(); openSettings(); },
+  'test-sound'(){ unlockAudio(); setTimeout(()=>{ soundTick(); setTimeout(soundTick,500); setTimeout(soundEnd,1000); },60); },
+  'push-on'(){ enablePush(); },
+  'push-off'(){ disablePush(); },
+  'push-test'(){ testPush(); },
   'set-bar'(el){ S.settings.bar=num(el.dataset.v); saveSettings(); openSettings(); if(S.active) render(); },
   'set-rest'(el){ S.settings.rest=num(el.dataset.v); saveSettings(); openSettings(); },
   export(){ doExport(); }
@@ -1410,7 +1529,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(!$('#modal').h
 function hydrate(d){
   S.library = ((d.library&&Array.isArray(d.library.list))?d.library.list:[]).map(e=>Object.assign({equip:e.bar?'barra':'otro', muscle:(GROUP[e.group]||{}).name||''}, e, {bar: e.equip? e.equip==='barra' : !!e.bar})).map(e=>e.group==='cardio'&&!e.kind?Object.assign(e,{kind:'cardio',dist:e.dist??'km'}):e);
   S.routines = (d.routines&&Array.isArray(d.routines.list))?d.routines.list:[];
-  S.settings = Object.assign({bar:20, rest:90}, d.settings||{});
+  S.settings = Object.assign({bar:20, rest:90, sound:true, push:false}, d.settings||{});
   S.active = d.active&&d.active.w ? d.active.w : null;
   S.sessions = d.sessions ? (Array.isArray(d.sessions)?d.sessions:(d.sessions.list||[])) : [];
 }
