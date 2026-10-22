@@ -2,7 +2,7 @@
 
 Cuaderno de gimnasio personal en forma de web app, pensado para usarse con el móvil mientras entrenas.
 
-Es una web estática: HTML, CSS y JavaScript sin dependencias ni proceso de compilación. Los datos se guardan en el propio navegador, sin servidor ni cuentas.
+Es una web estática: HTML, CSS y JavaScript sin proceso de compilación. Los datos se guardan en el dispositivo y, si inicias sesión, también en tu cuenta de Supabase, sincronizados entre dispositivos.
 
 ## Funciones
 
@@ -16,6 +16,7 @@ Es una web estática: HTML, CSS y JavaScript sin dependencias ni proceso de comp
 - **Calculadora de discos** para los ejercicios con barra olímpica.
 - **Base de 227 ejercicios** en español, con nombre en inglés, músculo, material y explicación técnica con puntos de referencia.
 - **Historial y progreso**: constancia de las últimas 12 semanas, series por grupo muscular, 1RM estimado (Epley), récords y ritmo en cardio.
+- **Cuenta y sincronización**: tus entrenos, rutinas y ajustes se guardan en tu cuenta y se sincronizan entre dispositivos. Funciona sin conexión y sube los cambios al volver.
 - **Exportar e importar** una copia de seguridad en JSON.
 - **Avisos del descanso**: pitidos en los 3 últimos segundos y al terminar, y notificación push cuando acaba el descanso aunque el móvil esté bloqueado.
 - Funciona sin conexión y se puede instalar en la pantalla de inicio.
@@ -27,6 +28,7 @@ Es una web estática: HTML, CSS y JavaScript sin dependencias ni proceso de comp
 ├── index.html             Estructura de la página
 ├── css/styles.css         Estilos (tema claro y oscuro)
 ├── js/app.js              Toda la lógica de la app
+├── js/vendor/supabase.js  Cliente oficial de Supabase (supabase-js 2.117.3, licencia MIT)
 ├── manifest.webmanifest   Datos para instalarla como app
 ├── sw.js                  Service worker (modo sin conexión y notificaciones)
 ├── icons/                 Iconos de la app
@@ -94,11 +96,31 @@ pg_cron cada 5 s ──(si hay avisos vencidos)──▶ función push ──▶
 
 ## Tus datos
 
-Todo se guarda en el almacenamiento local del navegador (`localStorage`) del dispositivo donde la usas. Esto implica:
+**Sin cuenta**, todo se guarda en el almacenamiento local del navegador (`localStorage`). Borrar los datos del navegador borra tus entrenos, y cada dispositivo tiene los suyos.
 
-- Cada navegador y cada dispositivo tiene sus propios datos; no se sincronizan solos.
-- Borrar los datos del navegador borra tus entrenos.
-- Para cambiar de móvil o hacer una copia de seguridad, usa **Ajustes → Exportar copia** y luego **Importar copia** en el otro dispositivo. Importar añade los datos a los que ya tienes, sin borrar nada.
+**Con cuenta** (**Ajustes → Cuenta**), los datos se guardan además en Supabase y se sincronizan entre dispositivos:
+
+- La app guarda siempre primero en el dispositivo, así que funciona sin conexión. Cada cambio queda en una cola y se sube en cuanto hay conexión.
+- Al abrir la app, al volver a ella y después de cada cambio, descarga lo que hayas hecho en otros dispositivos.
+- Al iniciar sesión por primera vez en un dispositivo, los entrenos y rutinas que ya tuviera se suben a la cuenta y se juntan con los que haya en ella.
+- Se sincronizan los entrenos, las rutinas, los ejercicios propios y los ajustes. El entreno en curso y el ajuste de notificaciones son de cada dispositivo.
+- Cerrar sesión borra los datos del dispositivo (siguen en tu cuenta). Si hay cambios sin subir, la app avisa antes.
+- Cada usuario solo puede leer y modificar sus propios datos: lo controla la base de datos con políticas RLS, no la app.
+
+### Configurar el inicio de sesión en Supabase
+
+En el panel de Supabase, **Authentication → URL Configuration**:
+
+- **Site URL**: `https://ferranaguilar.github.io/gymtracker/`
+- **Redirect URLs**: añade `https://ferranaguilar.github.io/gymtracker/` (y `http://localhost:8000/` si pruebas en local).
+
+Así los enlaces de confirmación de cuenta y de recuperar contraseña vuelven a la app.
+
+El servidor de email que trae Supabase por defecto envía pocos emails por hora y solo a los miembros del proyecto. Para abrir la app a otras personas, configura un SMTP propio en **Authentication → Emails → SMTP Settings**.
+
+### Copias de seguridad
+
+**Ajustes → Exportar copia** descarga todos tus datos en un archivo JSON. **Importar copia** los añade a los que ya tienes, sin borrar nada.
 
 ### Pasar los datos desde la versión de Claude
 
@@ -106,7 +128,7 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v3` a `gymtracker-v4`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v4` a `gymtracker-v5`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 
