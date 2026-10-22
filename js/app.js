@@ -586,17 +586,17 @@ const Store = {
     if(k in this.pending) this.flush(k);
   },
   async write(k,data){
-    if(S.mode!=='db'){ lsSet(k,data); return; }
+    if(S.mode!=='db'){ lsSet(k,data); Cloud.mark('doc',k); return; }
     if(data==null) await this.ref(k).delete(); else await this.ref(k).set(data);
   },
   async putSession(s){
-    if(S.mode!=='db'){ lsSet('sessions', S.sessions); return; }
+    if(S.mode!=='db'){ lsSet('sessions', S.sessions); Cloud.mark('session',s.id); return; }
     setSyncText('Guardando…');
     try{ await this.sessCol().doc(s.id).set(s); }catch(e){ reportErr(e); }
     setSync();
   },
   async dropSession(id){
-    if(S.mode!=='db'){ lsSet('sessions', S.sessions); return; }
+    if(S.mode!=='db'){ lsSet('sessions', S.sessions); Cloud.mark('session',id); return; }
     try{ await this.sessCol().doc(id).delete(); }catch(e){ reportErr(e); }
   }
 };
@@ -608,9 +608,213 @@ function reportErr(e){
   else toast('No se pudo guardar. Revisa tu conexión.');
 }
 function setSyncText(t){ const el=$('#sync'); if(el) el.textContent=t; }
-function setSync(){ const busy=Object.keys(Store.pending).length || Object.values(Store.busy).some(Boolean); setSyncText(busy?'Guardando…':''); }
+function setSync(){ const busy=Object.keys(Store.pending).length || Object.values(Store.busy).some(Boolean); setSyncText(busy?'Guardando…':(typeof Cloud!=='undefined'&&Cloud.status==='syncing')?'Sincronizando…':''); }
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') Store.flushAll(); });
 window.addEventListener('pagehide',()=>Store.flushAll());
+
+/* ---------- Cuenta y sincronización con Supabase ----------
+   La app guarda siempre primero en el dispositivo (funciona sin conexión) y anota cada cambio
+   en una cola. Con la sesión iniciada, sube la cola y descarga lo que ha cambiado en otros
+   dispositivos. El entreno en curso y el ajuste de notificaciones son de cada dispositivo. */
+const SB_URL='https://tdtezlgausvwlnnjibuo.supabase.co';
+const SB_KEY='sb_publishable__RD15zptk3m4HAWX6HrE3g_TKPMXV8A';   // clave pública: los datos los protege RLS
+const SYNC_DOCS=['library','routines','settings'];
+const DEVICE_SETTINGS=['push'];
+
+const Cloud={
+  sb:null, user:null, status:'off', last:null, busy:false, again:false, timer:null, gen:0, lastVisSync:0,
+  outbox:{docs:{}, sessions:{}},
+  init(){
+    const ob=lsGet('outbox'); if(ob&&ob.docs&&ob.sessions) this.outbox=ob;
+    if(window.claude||!window.supabase||!window.supabase.createClient) return;
+    this.sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, storageKey:'gymtracker-auth'}});
+    this.sb.auth.onAuthStateChange((ev,session)=>{
+      this.user=session?session.user:null;
+      this.status=this.user?(this.status==='off'?'idle':this.status):'off';
+      // No se llama a Supabase dentro de este aviso: se aplaza al siguiente ciclo.
+      if(ev==='PASSWORD_RECOVERY') setTimeout(()=>openAuth('newpass'),0);
+      if(this.user && (ev==='INITIAL_SESSION'||ev==='SIGNED_IN')) setTimeout(()=>this.sync(),0);
+      setTimeout(()=>{ setSync(); refreshAccountUI(); },0);
+    });
+    window.addEventListener('online',()=>this.sync());
+    document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && Date.now()-this.lastVisSync>30000){ this.lastVisSync=Date.now(); this.sync(); } });
+  },
+  available(){ return !!this.sb; },
+  saveOutbox(){ lsSet('outbox',this.outbox); },
+  mark(kind,key){
+    if(kind==='doc'&&!SYNC_DOCS.includes(key)) return;
+    this.outbox[kind==='doc'?'docs':'sessions'][key]=++this.gen+Date.now()*1000;
+    this.saveOutbox();
+    if(this.user){ clearTimeout(this.timer); this.timer=setTimeout(()=>this.sync(),2500); }
+  },
+  pending(){ return Object.keys(this.outbox.docs).length+Object.keys(this.outbox.sessions).length; },
+  setStatus(s){ this.status=s; setSync(); refreshAccountUI(); },
+  docData(k){
+    if(k==='library') return {list:S.library};
+    if(k==='routines') return {list:S.routines};
+    const st=clone(S.settings); DEVICE_SETTINGS.forEach(x=>delete st[x]); return st;
+  },
+  async sync(){
+    if(!this.sb||!this.user) return;
+    if(this.busy){ this.again=true; return; }
+    if(!navigator.onLine){ this.setStatus('offline'); return; }
+    this.busy=true; this.setStatus('syncing');
+    try{
+      const meta=lsGet('cloud')||{}; const first=meta.uid!==this.user.id;
+      if(first){ SYNC_DOCS.forEach(k=>this.mark('doc',k)); S.sessions.forEach(s=>this.mark('session',s.id)); }
+      const newPull=await this.pull(first?null:meta.lastPull, first);
+      await this.push();
+      lsSet('cloud',{uid:this.user.id, lastPull:newPull||meta.lastPull||null});
+      this.last=Date.now(); this.setStatus('idle');
+    }catch(e){ console.warn('sync',e); this.setStatus(navigator.onLine?'error':'offline'); }
+    this.busy=false;
+    if(this.again){ this.again=false; this.sync(); }
+  },
+  async pull(since, first){
+    let maxTs=since, changed=false;
+    // Entrenos (en páginas de 1000)
+    for(let from=0;;from+=1000){
+      let q=this.sb.from('sessions').select('id,date,data,deleted,updated_at').order('updated_at',{ascending:true}).range(from,from+999);
+      if(since) q=q.gte('updated_at',since);
+      const {data,error}=await q; if(error) throw error;
+      for(const row of data){
+        if(!maxTs||row.updated_at>maxTs) maxTs=row.updated_at;
+        if(this.outbox.sessions[row.id]) continue;            // cambio local pendiente: gana el local
+        const i=S.sessions.findIndex(s=>s.id===row.id);
+        if(row.deleted){ if(i>=0){ S.sessions.splice(i,1); changed=true; } }
+        else if(row.data&&Array.isArray(row.data.exercises)){ if(i>=0) S.sessions[i]=row.data; else S.sessions.push(row.data); changed=true; }
+      }
+      if(data.length<1000) break;
+    }
+    // Ejercicios propios, rutinas y ajustes
+    let dq=this.sb.from('docs').select('key,data,updated_at'); if(since) dq=dq.gte('updated_at',since);
+    const {data:docs,error:derr}=await dq; if(derr) throw derr;
+    for(const row of docs){
+      if(!maxTs||row.updated_at>maxTs) maxTs=row.updated_at;
+      const k=row.key, d=row.data||{};
+      if(this.outbox.docs[k] && !first) continue;
+      if(k==='library'||k==='routines'){
+        const remote=Array.isArray(d.list)?d.list:[];
+        if(first){ const ids=new Set(S[k].map(x=>x.id)); S[k]=S[k].concat(remote.filter(x=>x&&x.id&&!ids.has(x.id))); }
+        else S[k]=remote;
+      } else if(k==='settings'){
+        const keep={}; DEVICE_SETTINGS.forEach(x=>{ if(x in S.settings) keep[x]=S.settings[x]; });
+        S.settings=Object.assign({}, S.settings, d, keep);
+        if(first) delete this.outbox.docs.settings;
+      }
+      changed=true;
+    }
+    if(changed){
+      lsSet('sessions',S.sessions); lsSet('library',{list:S.library}); lsSet('routines',{list:S.routines}); lsSet('settings',S.settings);
+      this.saveOutbox(); render();
+    }
+    return maxTs;
+  },
+  async push(){
+    const snapDocs=Object.assign({},this.outbox.docs), snapSess=Object.assign({},this.outbox.sessions);
+    const dkeys=Object.keys(snapDocs);
+    if(dkeys.length){
+      const {error}=await this.sb.from('docs').upsert(dkeys.map(k=>({user_id:this.user.id, key:k, data:this.docData(k)})),{onConflict:'user_id,key'});
+      if(error) throw error;
+    }
+    const ids=Object.keys(snapSess);
+    for(let i=0;i<ids.length;i+=200){
+      const rows=ids.slice(i,i+200).map(id=>{ const s=S.sessions.find(x=>x.id===id);
+        return s?{user_id:this.user.id, id, date:Math.round(s.date)||0, data:s, deleted:false}:{user_id:this.user.id, id, date:0, data:{}, deleted:true}; });
+      const {error}=await this.sb.from('sessions').upsert(rows,{onConflict:'user_id,id'});
+      if(error) throw error;
+    }
+    // Solo se quitan de la cola los cambios que no se han vuelto a modificar mientras se subían.
+    dkeys.forEach(k=>{ if(this.outbox.docs[k]===snapDocs[k]) delete this.outbox.docs[k]; });
+    ids.forEach(id=>{ if(this.outbox.sessions[id]===snapSess[id]) delete this.outbox.sessions[id]; });
+    this.saveOutbox();
+  },
+  async signOut(){
+    await this.sb.auth.signOut().catch(()=>{});
+    ['library','routines','sessions','active','outbox','cloud'].forEach(k=>lsSet(k,null));
+    this.outbox={docs:{},sessions:{}}; this.user=null; this.status='off';
+    S.library=[]; S.routines=[]; S.sessions=[]; S.active=null; renderFocus(); render();
+  }
+};
+
+/* ---- Interfaz de la cuenta ---- */
+function cloudStatusText(){
+  const c=Cloud, p=c.pending();
+  if(c.status==='syncing') return 'Sincronizando…';
+  if(c.status==='offline') return p?`Sin conexión. ${p} ${p===1?'cambio pendiente':'cambios pendientes'} de subir.`:'Sin conexión.';
+  if(c.status==='error') return 'No se pudo sincronizar. Lo volveré a intentar.';
+  if(p) return `${p} ${p===1?'cambio pendiente':'cambios pendientes'} de subir.`;
+  return c.last?`Todo guardado en tu cuenta. Última sincronización: ${dTime.format(c.last)}.`:'Todo guardado en tu cuenta.';
+}
+function accountHTML(){
+  if(!Cloud.available()) return '';
+  if(!Cloud.user) return `<div class="field"><span>Cuenta</span>
+    <p class="small" style="margin:0 0 12px">Guarda tus entrenos en tu cuenta para no perderlos y tenerlos en todos tus dispositivos.</p>
+    <div class="row-gap"><button class="btn btn-primary" data-act="auth-open" data-v="login">Iniciar sesión</button><button class="btn btn-quiet" data-act="auth-open" data-v="signup">Crear cuenta</button></div></div>`;
+  return `<div class="field" id="account-box"><span>Cuenta</span>
+    <p class="small" style="margin:0 0 4px"><b>${esc(Cloud.user.email||'')}</b></p>
+    <p class="muted small" id="cloud-status" style="margin:0 0 12px">${cloudStatusText()}</p>
+    <div class="row-gap"><button class="btn btn-quiet" data-act="cloud-sync">Sincronizar ahora</button><button class="btn btn-text" data-act="auth-logout">Cerrar sesión</button></div></div>`;
+}
+function refreshAccountUI(){ const el=$('#cloud-status'); if(el) el.textContent=cloudStatusText(); }
+
+let authMode='login';
+function openAuth(mode, msg, err){
+  authMode=mode;
+  const t={login:'Iniciar sesión', signup:'Crear cuenta', reset:'Recuperar contraseña', newpass:'Nueva contraseña'}[mode];
+  const email=`<label class="field"><span>Email</span><input class="text-in" id="au-email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" value="${esc(S.authEmail||'')}"></label>`;
+  const pass=(lbl,ac)=>`<label class="field"><span>${lbl}</span><input class="text-in" id="au-pass" type="password" autocomplete="${ac}" minlength="8"></label>`;
+  let body='';
+  if(mode==='login') body=email+pass('Contraseña','current-password')+`<button class="btn btn-text" data-act="auth-open" data-v="reset" style="padding-left:0">He olvidado la contraseña</button>`;
+  if(mode==='signup') body=email+pass('Contraseña (mínimo 8 caracteres)','new-password')+`<p class="muted small" style="margin:-6px 0 14px">Te enviaremos un email para confirmar la cuenta. Los entrenos que ya tienes en este dispositivo se subirán a tu cuenta.</p>`;
+  if(mode==='reset') body=email+`<p class="muted small" style="margin:-6px 0 14px">Te enviaremos un enlace para elegir una contraseña nueva.</p>`;
+  if(mode==='newpass') body=pass('Contraseña nueva (mínimo 8 caracteres)','new-password');
+  const btn={login:'Iniciar sesión', signup:'Crear cuenta', reset:'Enviar enlace', newpass:'Guardar contraseña'}[mode];
+  const alt = mode==='login'?`<p class="small au-alt">¿No tienes cuenta? <button class="btn-link" data-act="auth-open" data-v="signup">Crear una</button></p>`
+    : mode==='signup'||mode==='reset'?`<p class="small au-alt">¿Ya tienes cuenta? <button class="btn-link" data-act="auth-open" data-v="login">Iniciar sesión</button></p>`:'';
+  openModal(`<div class="sheet-head"><h2>${t}</h2><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div><div class="sheet-body">
+    <form id="au-form" novalidate>${msg?`<p class="au-msg">${esc(msg)}</p>`:''}${err?`<p class="co-err" role="alert">${esc(err)}</p>`:''}${body}
+    <button class="btn btn-primary btn-block big" type="submit" id="au-submit">${btn}</button></form>${alt}</div>`);
+  const first=$(mode==='newpass'?'#au-pass':'#au-email'); if(first&&!(S.authEmail&&mode!=='newpass')) setTimeout(()=>first.focus(),80); else if($('#au-pass')) setTimeout(()=>$('#au-pass').focus(),80);
+}
+function authErr(e){
+  const c=(e&&(e.code||e.error_code))||'', m=String(e&&e.message||'').toLowerCase();
+  if(c==='invalid_credentials'||m.includes('invalid login')) return 'El email o la contraseña no son correctos.';
+  if(c==='email_not_confirmed'||m.includes('not confirmed')) return 'Todavía no has confirmado tu email. Abre el enlace que te enviamos y vuelve a intentarlo.';
+  if(c==='user_already_exists'||m.includes('already registered')) return 'Ya hay una cuenta con ese email. Inicia sesión.';
+  if(c==='weak_password'||m.includes('password')) return 'La contraseña debe tener al menos 8 caracteres.';
+  if(c==='over_email_send_rate_limit'||m.includes('rate limit')) return 'Se han enviado demasiados emails seguidos. Espera unos minutos y vuelve a intentarlo.';
+  if(c==='validation_failed'||m.includes('email')) return 'Revisa el email.';
+  if(!navigator.onLine) return 'Necesitas conexión a internet.';
+  return 'No se pudo completar. Prueba otra vez.';
+}
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='au-form') return; e.preventDefault();
+  const email=($('#au-email')||{}).value?.trim()||'', password=($('#au-pass')||{}).value||'';
+  if(email) S.authEmail=email;
+  if(authMode!=='newpass'&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ openAuth(authMode,null,'Escribe un email válido.'); return; }
+  if((authMode==='signup'||authMode==='newpass')&&password.length<8){ openAuth(authMode,null,'La contraseña debe tener al menos 8 caracteres.'); return; }
+  if(authMode==='login'&&!password){ openAuth(authMode,null,'Escribe tu contraseña.'); return; }
+  const b=$('#au-submit'); if(b){ b.disabled=true; b.textContent='Un momento…'; }
+  const redirectTo=location.origin+location.pathname;
+  try{
+    if(authMode==='login'){ const {error}=await Cloud.sb.auth.signInWithPassword({email,password}); if(error) throw error; closeModal(); toast('Sesión iniciada. Sincronizando tus entrenos…'); }
+    if(authMode==='signup'){ const {data,error}=await Cloud.sb.auth.signUp({email,password,options:{emailRedirectTo:redirectTo}}); if(error) throw error;
+      if(data.session){ closeModal(); toast('Cuenta creada. Sincronizando tus entrenos…'); }
+      else openAuth('login',`Te hemos enviado un email a ${email}. Ábrelo para confirmar la cuenta y después inicia sesión aquí.`); }
+    if(authMode==='reset'){ const {error}=await Cloud.sb.auth.resetPasswordForEmail(email,{redirectTo}); if(error) throw error;
+      openAuth('login',`Si hay una cuenta con ${email}, te llegará un email con un enlace para elegir una contraseña nueva.`); }
+    if(authMode==='newpass'){ const {error}=await Cloud.sb.auth.updateUser({password}); if(error) throw error; closeModal(); toast('Contraseña cambiada.'); }
+  }catch(err){ openAuth(authMode,null,authErr(err)); }
+});
+async function logoutFlow(){
+  if(Cloud.pending()&&navigator.onLine){ await Cloud.sync(); }
+  const p=Cloud.pending();
+  const msg=p?`Hay ${p} ${p===1?'cambio':'cambios'} sin subir a tu cuenta${navigator.onLine?'':' porque no tienes conexión'}. Si cierras sesión ahora, se perderán.`
+    :'Tus entrenos están guardados en tu cuenta. Al cerrar sesión se borran de este dispositivo; volverán al iniciar sesión otra vez.';
+  if(!(await ask('Cerrar sesión',msg,'Cerrar sesión',true))) return;
+  await Cloud.signOut(); toast('Sesión cerrada.');
+}
 
 const saveLibrary = ()=>Store.save('library',{list:S.library});
 const saveRoutines = ()=>Store.save('routines',{list:S.routines});
@@ -1135,6 +1339,7 @@ function pushRowHTML(){
 function openSettings(){
   const st=S.settings;
   openModal(`<div class="sheet-head"><h2>Ajustes</h2><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div><div class="sheet-body">
+    ${accountHTML()}
     <div class="field"><span>Peso de la barra</span><div class="seg">${[20,15,10].map(b=>`<button data-act="set-bar" data-v="${b}" aria-pressed="${num(st.bar)===b}">${b} kg</button>`).join('')}</div></div>
     <div class="field"><span>Descanso por defecto entre series</span><div class="seg">${[60,90,120,180].map(b=>`<button data-act="set-rest" data-v="${b}" aria-pressed="${num(st.rest)===b}">${b<120?b+' s':(b/60)+' min'}</button>`).join('')}</div></div>
     <div class="field"><span>Avisos del descanso</span>
@@ -1142,7 +1347,7 @@ function openSettings(){
       ${st.sound!==false?'<button class="btn btn-text" data-act="test-sound">Probar el sonido</button>':''}
       <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y al terminar. Suena con la app en pantalla; en iPhone no suena con el modo silencio activado.</p>
       ${pushRowHTML()}</div>
-    <div class="field"><span>Tus datos</span><p style="margin:0 0 12px" class="small">${S.mode==='db'?'Se guardan en tu cuenta y solo tú puedes verlos, aunque compartas el enlace de esta página.':'Se guardan solo en este navegador. Exporta una copia de vez en cuando para no perderlos.'}</p>
+    <div class="field"><span>Tus datos</span><p style="margin:0 0 12px" class="small">${S.mode==='db'?'Se guardan en tu cuenta y solo tú puedes verlos, aunque compartas el enlace de esta página.':(Cloud.user?'Se guardan en este dispositivo y en tu cuenta.':'Se guardan solo en este navegador. Inicia sesión o exporta una copia de vez en cuando para no perderlos.')}</p>
       <div class="row-gap"><button class="btn btn-quiet" data-act="export">Exportar copia</button><label class="btn btn-quiet" style="cursor:pointer">Importar copia<input type="file" accept=".json,application/json" data-ch="import" hidden></label></div></div>
     <p class="muted small" style="margin:8px 0 0">El 1RM estimado usa la fórmula de Epley: peso × (1 + reps / 30).</p>
   </div>`);
@@ -1173,7 +1378,7 @@ async function doImport(file){
   S.sessions=merge(S.sessions,incoming); saveLibrary(); saveRoutines();
   render(); toast('Importando…');
   if(S.mode==='db'){ for(const s of incoming){ try{ await Store.sessCol().doc(s.id).set(s); }catch(e){ reportErr(e); break; } } }
-  else lsSet('sessions',S.sessions);
+  else { lsSet('sessions',S.sessions); incoming.forEach(s=>Cloud.mark('session',s.id)); }
   toast('Copia importada.');
 }
 
@@ -1488,6 +1693,9 @@ const A = {
     e.hidden=true; saveLibrary(); render(); },
   'set-sound'(el){ S.settings.sound=el.dataset.v==='1'; saveSettings(); unlockAudio(); if(S.settings.sound) soundEnd(); openSettings(); },
   'test-sound'(){ unlockAudio(); setTimeout(()=>{ soundTick(); setTimeout(soundTick,500); setTimeout(soundEnd,1000); },60); },
+  'auth-open'(el){ openAuth(el.dataset.v); },
+  'auth-logout'(){ logoutFlow(); },
+  'cloud-sync'(){ Cloud.sync(); },
   'push-on'(){ enablePush(); },
   'push-off'(){ disablePush(); },
   'push-test'(){ testPush(); },
@@ -1537,6 +1745,7 @@ async function boot(){
   S.loadError=false; S.loaded=false; render();
   let d; try{ d=await Store.init(); }catch(e){ S.loadError=true; render(); return; }
   hydrate(d); S.loaded=true; ensureKeys(); render(); renderFocus(); if(S.active) startTickers();
+  Cloud.init();
   if(window.claude && typeof window.claude.use==='function'){ try{ downloads=await window.claude.use('downloads'); }catch(e){ downloads=null; } }
 }
 boot();

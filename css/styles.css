@@ -412,5 +412,9 @@ div.tile-v{display:block}
 .set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 6px;font-weight:650}
 .seg-sm{flex:none;min-width:220px}
 .seg-sm button{padding:7px 8px}
+.au-msg{background:color-mix(in srgb,var(--done) 14%,transparent);border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:.92rem;line-height:1.4}
+.au-alt{text-align:center;margin:14px 0 4px}
+.btn-link{background:none;border:0;padding:6px 2px;color:var(--accent);font-weight:700}
+.co-err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--ink);border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:.92rem}
 .sync-note{margin:10px 2px 0;text-align:center}
 @media (min-width:700px){.st-row{max-width:420px;margin:0 auto}}

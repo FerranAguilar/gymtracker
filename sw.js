@@ -1,11 +1,12 @@
 /* Service worker: la app funciona sin conexión (por ejemplo, en un gimnasio sin cobertura).
    Al publicar una versión nueva, cambia CACHE para que los móviles descarguen los archivos nuevos. */
-const CACHE = 'gymtracker-v3';
+const CACHE = 'gymtracker-v4';
 const ASSETS = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
+  './js/vendor/supabase.js',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
