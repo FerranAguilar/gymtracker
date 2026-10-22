@@ -1,4 +1,4 @@
-# Serie
+# GymTracker
 
 Cuaderno de gimnasio personal en forma de web app, pensado para usarse con el móvil mientras entrenas.
 
@@ -17,6 +17,7 @@ Es una web estática: HTML, CSS y JavaScript sin dependencias ni proceso de comp
 - **Base de 227 ejercicios** en español, con nombre en inglés, músculo, material y explicación técnica con puntos de referencia.
 - **Historial y progreso**: constancia de las últimas 12 semanas, series por grupo muscular, 1RM estimado (Epley), récords y ritmo en cardio.
 - **Exportar e importar** una copia de seguridad en JSON.
+- **Avisos del descanso**: pitidos en los 3 últimos segundos y al terminar, y notificación push cuando acaba el descanso aunque el móvil esté bloqueado.
 - Funciona sin conexión y se puede instalar en la pantalla de inicio.
 
 ## Estructura
@@ -27,8 +28,12 @@ Es una web estática: HTML, CSS y JavaScript sin dependencias ni proceso de comp
 ├── css/styles.css         Estilos (tema claro y oscuro)
 ├── js/app.js              Toda la lógica de la app
 ├── manifest.webmanifest   Datos para instalarla como app
-├── sw.js                  Service worker (modo sin conexión)
-└── icons/                 Iconos de la app
+├── sw.js                  Service worker (modo sin conexión y notificaciones)
+├── icons/                 Iconos de la app
+└── supabase/              Servidor de notificaciones push
+    ├── config.toml
+    ├── functions/push/    Función que programa, cancela y envía los avisos
+    └── migrations/        Tablas y tarea programada
 ```
 
 ## Probarla en tu ordenador
@@ -57,6 +62,36 @@ También sirve cualquier hosting estático (Netlify, Cloudflare Pages, Vercel…
 
 Se abre a pantalla completa, como una app, y funciona sin cobertura.
 
+## Avisos del descanso
+
+**Sonido.** Pitidos en los 3 últimos segundos del descanso y uno doble al terminar. Se activa o desactiva en **Ajustes → Avisos del descanso**. Suena con la app en pantalla (la app mantiene la pantalla encendida durante el entreno). En iPhone no suena con el modo silencio activado.
+
+**Notificaciones push.** Avisan al acabar el descanso aunque el móvil esté bloqueado o estés en otra app. Se activan en **Ajustes → Avisos del descanso → Activar notificaciones**, y allí mismo puedes enviar una prueba.
+
+- **Android y ordenador** (Chrome, Edge, Firefox): funcionan desde el navegador o con la app instalada.
+- **iPhone y iPad** (iOS 16.4 o posterior): solo con la app añadida a la pantalla de inicio y abierta desde allí.
+- Necesitan HTTPS (GitHub Pages, Netlify, etc.) o `localhost`.
+
+### Cómo funciona el servidor
+
+```
+App ──(empieza el descanso)──▶ función push ──▶ tabla rest_alarms
+App ──(sigue antes / +15 s)──▶ función push (cancela o reprograma)
+pg_cron cada 5 s ──(si hay avisos vencidos)──▶ función push ──▶ servicio push del navegador ──▶ notificación
+```
+
+- Las claves VAPID y el secreto interno los genera el propio servidor la primera vez y se guardan en la tabla `push_config`, que solo puede leer la función.
+- La app no necesita ninguna clave: solo llama a la URL de la función (`PUSH_URL` en `js/app.js`).
+- Si la app sigue en pantalla, cancela el aviso 8 segundos antes del final y suena ella misma, para no avisar dos veces. Si pasa a segundo plano en esos últimos segundos, lo vuelve a programar.
+- La función solo acepta direcciones de servicios push conocidos (Google, Mozilla, Apple y Microsoft) y un aviso pendiente por dispositivo.
+- La precisión es de unos 5 segundos, por el intervalo de la tarea programada.
+
+### Desplegarlo en otro proyecto de Supabase
+
+1. Crea el proyecto y aplica las migraciones de `supabase/migrations/` (cambia la URL de la función en la segunda).
+2. Despliega la función: `supabase functions deploy push --no-verify-jwt`.
+3. Cambia `PUSH_URL` en `js/app.js` por la URL de tu función.
+
 ## Tus datos
 
 Todo se guarda en el almacenamiento local del navegador (`localStorage`) del dispositivo donde la usas. Esto implica:
@@ -71,9 +106,11 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `serie-v1` a `serie-v2`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v3` a `gymtracker-v4`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 
 - `js/app.js` también funciona dentro de Claude: si detecta su entorno, guarda en la cuenta de Claude en lugar de en el navegador. Fuera de Claude usa siempre `localStorage`.
+- Las copias de seguridad antiguas (las exportadas cuando la app se llamaba «Serie») se pueden importar sin problema.
+- Las claves internas de `localStorage` empiezan por `serie:` por compatibilidad con los datos ya guardados; no las cambies.
 - La única dependencia externa es la tipografía Archivo de Google Fonts; sin conexión se usa la fuente del sistema.
