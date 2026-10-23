@@ -11,7 +11,7 @@ Es una web estática: HTML, CSS y JavaScript sin proceso de compilación. Los da
 - **Series de calentamiento**: botón «Calentamiento» en cada ejercicio. Añade arriba series con peso creciente (siempre por debajo de la primera serie) y repeticiones decrecientes, sin descanso entre ellas. Se ajustan solas si cambias el peso de la primera serie, el ejercicio las recuerda para la próxima vez. Suman al tonelaje, pero no cuentan para los récords, el 1RM ni el número de series.
 - **Descanso por ejercicio**, editable desde la propia pantalla del entrenamiento.
 - **Memoria por ejercicio**: cada ejercicio recuerda las series, kg, repeticiones y descanso de la última vez.
-- **La serie 1 rellena las demás** al cambiar sus kg o repeticiones.
+- **Las series se copian hacia abajo**: al cambiar el peso o las repeticiones de una serie, las de debajo que aún no has hecho quedan iguales. Al añadir una serie, toma el peso y las repeticiones de la última.
 - **Cardio** con tiempo y distancia (km o metros) y cronómetro integrado.
 - **Tonelaje acumulado** de la sesión en la barra inferior.
 - **Calculadora de discos** para los ejercicios con barra olímpica.
@@ -129,7 +129,7 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v5` a `gymtracker-v6`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v6` a `gymtracker-v7`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 

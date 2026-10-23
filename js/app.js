@@ -1033,18 +1033,22 @@ function swElapsed(f){ const sw=f&&f.sw; if(!sw) return 0; return sw.acc + (sw.r
 function fmtU(v,u){ return u==='kg'? fmt(Math.round(v*2)/2)+' kg' : u==='min'? clock(v*60) : fmt(Math.round(v*100)/100)+' '+u; }
 
 /* Editing set 1 copies its value to the other pending sets (unless you changed one of them by hand) */
+/* Al cambiar una serie, las series de debajo que aún no has hecho quedan iguales que ella
+   (peso y repeticiones). El calentamiento no se copia (sus pesos van subiendo): si editas una de sus series,
+   deja de recalcularse solo. */
 function syncSets(ex, si, fields){
   const s=ex.sets[si]; if(!s) return;
-  const fw=firstWork(ex);
-  if(si!==fw){ s.own=true; return; }
-  ex.sets.forEach((x,j)=>{ if(j>fw && !x.done && !x.own && !isWarm(x)) fields.forEach(f=>{ x[f]=s[f]; }); });
-  if(fields.includes('w')) refreshWarm(ex);
+  if(isWarm(s)){ s.own=true; return; }
+  const all=fieldsOf(exById(ex.exId));               // la serie entera: peso y repeticiones (o tiempo y distancia)
+  ex.sets.forEach((x,j)=>{ if(j>si && !x.done && !isWarm(x)) all.forEach(f=>{ x[f]=s[f]; }); });
+  if(si===firstWork(ex) && fields.includes('w')) refreshWarm(ex);
 }
 function syncNote(ex, si){
-  if(si!==firstWork(ex)) return '';
-  const w=warmCount(ex)>0, more=workCount(ex)>1;
-  if(!w&&!more) return '';
-  return `<p class="muted small sync-note">${more?'Lo que pongas en la serie 1 se copia al resto de series pendientes.':''}${w?(more?' ':'')+'El calentamiento se ajusta a su peso.':''}</p>`;
+  const s=ex.sets[si]; if(!s||isWarm(s)) return '';
+  const below=ex.sets.some((x,j)=>j>si && !x.done && !isWarm(x));
+  const w=si===firstWork(ex) && warmCount(ex)>0;
+  if(!below&&!w) return '';
+  return `<p class="muted small sync-note">${below?'Las series de debajo que aún no has hecho quedan iguales que esta.':''}${w?(below?' ':'')+'El calentamiento se ajusta a este peso.':''}</p>`;
 }
 /* ---------- Series de calentamiento ----------
    Van al principio del ejercicio, marcadas con wu:true. Se calculan a partir del peso de la
@@ -1706,7 +1710,7 @@ const A = {
   'use-prev'(el){ const ei=+el.dataset.ei, si=+el.dataset.si; const last=lastPerf(S.active.exercises[ei].exId); const p=prevFor(S.active.exercises[ei],si,last); if(!p) return; const s=S.active.exercises[ei].sets[si]; { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); },
   'warm-on'(el){ const ex=S.active.exercises[+el.dataset.ei]; if(addWarm(ex)){ saveActive(); render(); renderFocus(); } },
   'warm-off'(el){ const ex=S.active.exercises[+el.dataset.ei]; removeWarm(ex); saveActive(); render(); renderFocus(); },
-  'set-add'(el){ const ex=S.active.exercises[+el.dataset.ei]; const l=ex.sets[ex.sets.length-1]; ex.sets.push(blankFrom(l,exById(ex.exId))); saveActive(); render(); },
+  'set-add'(el){ const ex=S.active.exercises[+el.dataset.ei]; const l=[...ex.sets].reverse().find(x=>!isWarm(x))||ex.sets[ex.sets.length-1]; ex.sets.push(blankFrom(l,exById(ex.exId))); saveActive(); render(); },
   'set-del'(el){ const ex=S.active.exercises[+el.dataset.ei]; if(ex.sets.length>1) ex.sets.pop(); saveActive(); render(); },
   'ex-up'(el){ closeModal(); move(S.active.exercises,+el.dataset.ei,-1); saveActive(); render(); },
   'ex-down'(el){ closeModal(); move(S.active.exercises,+el.dataset.ei,1); saveActive(); render(); },
