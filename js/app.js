@@ -824,7 +824,7 @@ const saveActive = ()=>Store.save('active', S.active?{w:S.active}:null, 700);
 /* ---------- Derived data ---------- */
 function sortedSessions(){ return S.sessions.slice().sort((a,b)=>b.date-a.date); }
 function lastPerf(exId){
-  for(const s of sortedSessions()){ const e=s.exercises.find(x=>x.exId===exId); if(e&&e.sets.length) return {date:s.date, sets:e.sets, rest:e.rest, planned:e.planned}; }
+  for(const s of sortedSessions()){ const e=s.exercises.find(x=>x.exId===exId); if(e&&e.sets.length) return {date:s.date, sets:e.sets, rest:e.rest, planned:e.planned, warm:e.warm}; }
   return null;
 }
 function exBest(exId, before=Infinity){
@@ -907,15 +907,17 @@ function viewWorkout(){
   a.exercises.forEach((ex,ei)=>{
     const meta=exById(ex.exId); const last=lastPerf(ex.exId); const fc=!!(f&&f.k===ex.k); const cardio=isCardio(meta), u=unitOf(meta), W=word(meta);
     const doneN=ex.sets.filter(s=>s.done).length, all=doneN===ex.sets.length;
-    const cta = fc ? (f.phase==='rest'?'Volver al descanso':`Volver ${cardio?'al':'a la'} ${W} ${Math.min(f.si,ex.sets.length-1)+1}`) : all ? (cardio?'Hacer otro bloque':'Hacer otra serie') : doneN ? `Continuar con ${cardio?'el':'la'} ${W} ${firstUndone(ex)+1}` : 'Empezar ejercicio';
-    const info=[]; if(ex.target) info.push(cardio?`Objetivo ${esc(ex.target)} min`:`Objetivo ${ex.sets.length} × ${esc(ex.target)}`); if(last) info.push('Última vez '+ago(last.date));
+    const art=ps=>ps.warm||cardio?'el':'la';
+    const cta = fc ? (f.phase==='rest'?'Volver al descanso':(ps=>`Volver ${art(ps)==='el'?'al':'a la'} ${ps.lower}`)(setPos(ex,Math.min(f.si,ex.sets.length-1)))) : all ? (cardio?'Hacer otro bloque':'Hacer otra serie') : doneN ? (ps=>`Continuar con ${art(ps)} ${ps.lower}`)(setPos(ex,firstUndone(ex))) : 'Empezar ejercicio';
+    const nWarm=warmCount(ex), warmDone=ex.sets.some(s=>isWarm(s)&&s.done), workDone=ex.sets.some(s=>!isWarm(s)&&s.done);
+    const info=[]; if(ex.target) info.push(cardio?`Objetivo ${esc(ex.target)} min`:`Objetivo ${workCount(ex)} × ${esc(ex.target)}`); if(last) info.push('Última vez '+ago(last.date));
     h += `<article class="ex${fc?' focus':''}" style="--g:${GROUP[meta.group]?.color}">
       <header class="ex-head"><button class="ex-title" data-act="lib-open" data-id="${ex.exId}"><h3>${esc(meta.name)}</h3>${info.length?`<p class="muted small">${info.join('. ')}</p>`:''}</button>
         <button class="icon-btn more" data-act="ex-menu" data-ei="${ei}" aria-label="Opciones de ${esc(meta.name)}">${ICON.more}</button></header>
       <div class="sets" role="table">
         <div class="set set-h" role="row"><span style="text-align:center">#</span><span>Anterior</span>${cardio?`<span>Tiempo</span><span>${u}</span>`:'<span>kg</span><span>Reps</span>'}<span class="sr">Estado</span></div>
-        ${ex.sets.map((s,si)=>{ const p=last&&last.sets[si]; const cur=fc&&f.phase==='set'&&Math.min(f.si,ex.sets.length-1)===si; return `<div class="set${s.done?' done':''}${cur?' current':''}" role="row">
-          <span class="set-n num">${si+1}</span>
+        ${ex.sets.map((s,si)=>{ const p=prevFor(ex,si,last); const cur=fc&&f.phase==='set'&&Math.min(f.si,ex.sets.length-1)===si; const sp=setPos(ex,si); return `<div class="set${s.done?' done':''}${cur?' current':''}${sp.warm?' warm':''}" role="row">
+          <span class="set-n num" ${sp.warm?`title="${sp.label}" aria-label="${sp.label}"`:''}>${sp.short}</span>
           ${p?`<button class="prev num" data-act="use-prev" data-ei="${ei}" data-si="${si}" aria-label="Copiar ${esc(setTxt(p,meta))}">${cardio?tTxt(p.t):`${fmt(p.w)} × ${p.r}`}</button>`:`<span class="prev">—</span>`}
           ${cardio?`<button class="cell num ${s.t===''?'empty':''}" data-act="cell" data-ei="${ei}" data-si="${si}" aria-label="Editar ${W} ${si+1}">${s.t===''?'tiempo':tTxt(s.t)}</button>
           ${u?`<button class="cell num ${s.d===''?'empty':''}" data-act="cell" data-ei="${ei}" data-si="${si}" aria-label="Editar ${W} ${si+1}">${s.d===''?u:esc(s.d)}</button>`:'<span></span>'}`
@@ -924,7 +926,8 @@ function viewWorkout(){
           <span class="st-ic" aria-label="${s.done?'Hecha':'Pendiente'}">${s.done?ICON.check:''}</span>
         </div>`;}).join('')}
       </div>
-      <button class="btn btn-text add-set" data-act="set-add" data-ei="${ei}">${ICON.plus}${cardio?'Añadir bloque':'Añadir serie'}</button>
+      <div class="ex-foot"><button class="btn btn-text add-set" data-act="set-add" data-ei="${ei}">${ICON.plus}${cardio?'Añadir bloque':'Añadir serie'}</button>
+      ${canWarm(meta)?((nWarm||ex.warm)&&!warmDone?`<button class="btn btn-text warm-btn" data-act="warm-off" data-ei="${ei}">Quitar calentamiento</button>`:!ex.warm&&!workDone?`<button class="btn btn-text warm-btn" data-act="warm-on" data-ei="${ei}">${ICON.plus}Calentamiento</button>`:''):''}</div>
       <div class="ex-rest"><span>Descanso entre ${cardio?'bloques':'series'}${ex.rest==null?'<small>Por defecto, de ajustes</small>':''}</span>
         <div class="rest-ctl"><button data-act="exrest" data-ei="${ei}" data-d="-15" aria-label="15 segundos menos">−15</button><b class="num">${clock(restFor(ex))}</b><button data-act="exrest" data-ei="${ei}" data-d="15" aria-label="15 segundos más">+15</button></div></div>
       <button class="btn ${all&&!fc?'btn-quiet':'btn-primary'} btn-block big ex-cta" data-act="ex-start" data-ei="${ei}">${ICON.play}${cta}</button>
@@ -945,7 +948,7 @@ function stepperHTML(label,f,val,main,mainLbl,fine,fineLbl,mode,ph){
 }
 function setSheet(){
   const {ei,si}=S.setEdit; const ex=S.active.exercises[ei]; const s=ex.sets[si]; if(!s) return '';
-  const m=exById(ex.exId); const last=lastPerf(ex.exId); const p=last&&last.sets[si];
+  const m=exById(ex.exId); const last=lastPerf(ex.exId); const p=prevFor(ex,si,last);
   let body;
   if(isCardio(m)){
     const u=unitOf(m), ds=distSteps(m);
@@ -956,7 +959,7 @@ function setSheet(){
     body = stepperHTML('Peso (kg)','w',s.w,step,fmt(step),fine,fine.map(d=>fmt(Math.abs(d))),'decimal','0')
       + stepperHTML(`Repeticiones${ex.target?` (objetivo ${esc(ex.target)})`:''}`,'r',s.r,1,'1',null,null,'numeric','0');
   }
-  return `<div class="sheet-head"><div><h2>${cap(word(m))} ${si+1} de ${ex.sets.length}</h2><p class="muted small" style="margin:2px 0 0">${esc(m.name)}</p></div><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div>
+  return `<div class="sheet-head"><div><h2>${setPos(ex,si).label}</h2><p class="muted small" style="margin:2px 0 0">${esc(m.name)}</p></div><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div>
   <div class="sheet-body">
     ${p?`<button class="copy-prev" data-act="st-copy"><span>La última vez <b class="num">${isCardio(m)?setTxt(p,m):`${fmt(p.w)} kg × ${p.r}`}</b></span><span class="link">Copiar</span></button>`:''}
     ${body}
@@ -992,7 +995,7 @@ function updateChrome(){
   else { pl.hidden=true; pl.innerHTML=''; }
   updateTimes(); keepAwake(!!S.active);
 }
-function activeTonnage(){ let t=0; for(const e of S.active.exercises) for(const s of e.sets) if(s.done) t+=num(s.w)*num(s.r); return t; }
+function activeTonnage(){ let t=0; for(const e of S.active.exercises) for(const s of e.sets) if(s.done&&!isWarm(s)) t+=num(s.w)*num(s.r); return t; }
 function updateTimes(){ if(!S.active) return; const t=clock((Date.now()-S.active.start)/1000); const e=$('#elapsed'); if(e) e.textContent=t; const p=$('#pill-time'); if(p) p.textContent=t; }
 
 /* Drag a sheet down to close it */
@@ -1032,10 +1035,83 @@ function fmtU(v,u){ return u==='kg'? fmt(Math.round(v*2)/2)+' kg' : u==='min'? c
 /* Editing set 1 copies its value to the other pending sets (unless you changed one of them by hand) */
 function syncSets(ex, si, fields){
   const s=ex.sets[si]; if(!s) return;
-  if(si>0){ s.own=true; return; }
-  ex.sets.forEach((x,j)=>{ if(j>0 && !x.done && !x.own) fields.forEach(f=>{ x[f]=s[f]; }); });
+  const fw=firstWork(ex);
+  if(si!==fw){ s.own=true; return; }
+  ex.sets.forEach((x,j)=>{ if(j>fw && !x.done && !x.own && !isWarm(x)) fields.forEach(f=>{ x[f]=s[f]; }); });
+  if(fields.includes('w')) refreshWarm(ex);
 }
-function syncNote(ex, si){ return si===0 && ex.sets.length>1 ? '<p class="muted small sync-note">Lo que pongas en la serie 1 se copia al resto de series pendientes.</p>' : ''; }
+function syncNote(ex, si){
+  if(si!==firstWork(ex)) return '';
+  const w=warmCount(ex)>0, more=workCount(ex)>1;
+  if(!w&&!more) return '';
+  return `<p class="muted small sync-note">${more?'Lo que pongas en la serie 1 se copia al resto de series pendientes.':''}${w?(more?' ':'')+'El calentamiento se ajusta a su peso.':''}</p>`;
+}
+/* ---------- Series de calentamiento ----------
+   Van al principio del ejercicio, marcadas con wu:true. Se calculan a partir del peso de la
+   primera serie efectiva: pesos crecientes (siempre por debajo de ella) y repeticiones
+   decrecientes. Entre ellas no hay descanso. En el entreno guardado se separan (e.warm),
+   así no cuentan para el tonelaje, los récords, el 1RM ni el progreso. */
+const isWarm = s => !!(s && s.wu);
+const warmCount = ex => ex.sets.filter(isWarm).length;
+const firstWork = ex => { const i=ex.sets.findIndex(s=>!isWarm(s)); return i<0?ex.sets.length:i; };
+const workCount = ex => ex.sets.length-warmCount(ex);
+/* Posición y texto de una serie: «C1», «Calentamiento 1 de 3», «Serie 2 de 4» */
+function setPos(ex, si){
+  const m=exById(ex.exId), s=ex.sets[si];
+  if(isWarm(s)){ const n=ex.sets.slice(0,si+1).filter(isWarm).length, t=warmCount(ex); return {warm:true, n, t, short:'C'+n, label:`Calentamiento ${n} de ${t}`, lower:`calentamiento ${n}`}; }
+  const n=ex.sets.slice(0,si+1).filter(x=>!isWarm(x)).length, t=workCount(ex);
+  return {warm:false, n, t, short:String(n), label:`${cap(word(m))} ${n} de ${t}`, lower:`${word(m)} ${n}`};
+}
+/* La serie de la última vez que corresponde a esta (las de calentamiento con las de calentamiento) */
+function prevFor(ex, si, last){
+  if(!last) return null; const p=setPos(ex,si);
+  return p.warm ? ((last.warm||[])[p.n-1]||null) : (last.sets[p.n-1]||null);
+}
+const canWarm = m => !!m && !isCardio(m) && m.equip!=='corp' && !['core','cardio'].includes(m.group);
+function warmStep(m){ return ['manc','kb'].includes(m.equip)?2:2.5; }
+function warmPlan(ex){
+  const m=exById(ex.exId), fw=ex.sets[firstWork(ex)]; if(!fw) return [];
+  const W=num(fw.w); if(!(W>0)) return [];
+  const step=warmStep(m), bar=m.bar?(num(S.settings.bar)||20):0;
+  const n = W>=100?4 : W>=60?3 : W>=25?2 : 1;
+  const pct={1:[.5],2:[.5,.75],3:[.4,.6,.8],4:[.4,.55,.7,.85]}[n];
+  const reps={1:[8],2:[8,4],3:[8,5,3],4:[8,5,3,2]}[n];
+  const out=[]; let prev=0;
+  pct.forEach((p,i)=>{
+    let w=Math.round(W*p/step)*step;
+    if(bar) w=Math.max(bar,w);
+    w=Math.max(step,w);
+    if(w>=W) w=Math.floor((W-0.001)/step)*step;     // siempre por debajo de la primera serie
+    if(w<=prev||w<=0||(bar&&w<bar)) return;          // orden ascendente, sin repetir pesos ni bajar de la barra
+    out.push({w:fmtIn(w), r:String(reps[i]), done:false, wu:true}); prev=w;
+  });
+  return out;
+}
+/* Rehace el calentamiento si cambias el peso de la primera serie (salvo que ya hayas
+   hecho o tocado a mano alguna serie de calentamiento) */
+function refreshWarm(ex){
+  if(!ex.warm) return;
+  const old=warmCount(ex), warm=ex.sets.slice(0,old);
+  if(warm.some(s=>s.done||s.own)) return;
+  const plan=warmPlan(ex);                           // puede quedar vacío si el peso es muy bajo
+  ex.sets.splice(0,old,...plan);
+  shiftFocus(ex, old, plan.length-old);
+}
+function shiftFocus(ex, from, delta){
+  const f=S.active&&S.active.focus; if(!f||!delta) return;
+  if(f.k===ex.k && f.si>=from) f.si=Math.max(0,f.si+delta);
+  if(f.next&&f.next.k===ex.k&&f.next.si>=from) f.next.si=Math.max(0,f.next.si+delta);
+}
+function addWarm(ex){
+  const plan=warmPlan(ex);
+  if(!plan.length){ toast('Pon primero el peso de la primera serie y se calculará el calentamiento.'); return false; }
+  ex.sets.splice(0,0,...plan); ex.warm=true; shiftFocus(ex,0,plan.length); return true;
+}
+function removeWarm(ex){
+  const n=warmCount(ex); if(!n) return;
+  ex.sets.splice(0,n); ex.warm=false; shiftFocus(ex,0,-n);
+}
+
 /* A new exercise starts from what you did last time: same number of sets, kg and reps */
 function buildExercise(exId, nSets=3, target=''){
   const last=lastPerf(exId); const sets=[];
@@ -1047,7 +1123,9 @@ function buildExercise(exId, nSets=3, target=''){
     if(isCardio(meta)) sets.push({t: ls?(ls.t||''):(parseTime(target)||''), d: ls&&ls.d?fmtIn(ls.d):'', done:false});
     else sets.push({w: ls?fmtIn(ls.w):'', r: ls?String(ls.r):(isFinite(tr)?String(tr):''), done:false});
   }
-  return {k:uid(), exId, target:target||'', rest:(last&&last.rest!=null)?last.rest:null, sets};
+  const ex={k:uid(), exId, target:target||'', rest:(last&&last.rest!=null)?last.rest:null, sets};
+  if(last&&last.warm&&last.warm.length&&canWarm(meta)){ ex.warm=true; ex.sets.unshift(...warmPlan(ex)); }
+  return ex;
 }
 function startWorkout(rid){
   const r = rid ? S.routines.find(x=>x.id===rid) : null;
@@ -1056,7 +1134,7 @@ function startWorkout(rid){
 }
 async function finishWorkout(){
   const a=S.active;
-  const exercises = a.exercises.map(e=>({exId:e.exId, planned:e.sets.length, ...(e.rest!=null?{rest:e.rest}:{}), sets:e.sets.filter(s=>s.done).map(s=>isCardio(exById(e.exId))?{t:Math.round(num(s.t)), d:num(s.d)}:{w:num(s.w), r:Math.round(num(s.r))})})).filter(e=>e.sets.length);
+  const exercises = a.exercises.map(e=>({exId:e.exId, planned:workCount(e), ...(e.rest!=null?{rest:e.rest}:{}), ...(e.sets.some(s=>s.done&&isWarm(s))?{warm:e.sets.filter(s=>s.done&&isWarm(s)).map(s=>({w:num(s.w), r:Math.round(num(s.r))}))}:{}), sets:e.sets.filter(s=>s.done&&!isWarm(s)).map(s=>isCardio(exById(e.exId))?{t:Math.round(num(s.t)), d:num(s.d)}:{w:num(s.w), r:Math.round(num(s.r))})})).filter(e=>e.sets.length);
   if(!exercises.length){
     const ok = await ask('No has marcado ninguna serie como hecha', 'Si terminas ahora, el entreno no se guardará. Marca las series con la casilla de la derecha.', 'Descartar entreno', true, 'Seguir entrenando');
     if(ok){ S.active=null; saveActive(); stopRest(); render(); }
@@ -1422,7 +1500,8 @@ function finishSet(){
     toast(S.active.exercises.every(e=>e.sets.every(x=>x.done)) ? 'Todo hecho. Pulsa Terminar para guardar el entreno.' : 'Ejercicio completado.');
     return;
   }
-  if(nx.k===ex.k){ const ns=ex.sets[nx.si]; fieldsOf(c.m).forEach(k=>{ if(ns[k]===''||ns[k]==null) ns[k]=s[k]; }); }
+  if(isWarm(s) && nx.k===ex.k){ S.active.focus={k:ex.k, si:nx.si, phase:'set', open:f.open}; saveActive(); render(); renderFocus(); return; }
+  if(nx.k===ex.k){ const ns=ex.sets[nx.si]; if(!isWarm(ns)) fieldsOf(c.m).forEach(k=>{ if(ns[k]===''||ns[k]==null) ns[k]=s[k]; }); }
   const total=restFor(ex);
   Object.assign(f,{phase:'rest', restTotal:total, restEnd:Date.now()+total*1000, next:nx, beep:null});
   saveActive(); render(); renderFocus();
@@ -1461,12 +1540,12 @@ function tile(label,f,val,step,prev,mode,ph='0'){
     <div class="tile-b"><button data-act="f-step" data-f="${f}" data-d="${-step}" aria-label="Restar">−</button><button data-act="f-step" data-f="${f}" data-d="${step}" aria-label="Sumar">+</button></div></div>`;
 }
 function focusSet(c){
-  const {ex,si,s,m,f}=c; const last=lastPerf(ex.exId); const p=last&&last.sets[si];
+  const {ex,si,s,m,f}=c; const last=lastPerf(ex.exId); const p=prevFor(ex,si,last); const sp=setPos(ex,si);
   const cardio=isCardio(m), single=cardio&&ex.sets.length===1;
-  const dots=ex.sets.map((x,j)=>`<i class="${x.done?'on':''}${j===si?' cur':''}"></i>`).join('');
+  const dots=ex.sets.map((x,j)=>`<i class="${x.done?'on':''}${j===si?' cur':''}${isWarm(x)?' w':''}"></i>`).join('');
   const head = single
     ? `<p class="f-ex">Cardio</p><h2 class="f-title long">${esc(m.name)}</h2>`
-    : `<p class="f-ex">${esc(m.name)}</p><h2 class="f-title">${cap(word(m))} ${si+1}<span> de ${ex.sets.length}</span></h2><div class="f-dots" aria-hidden="true">${dots}</div>`;
+    : `<p class="f-ex">${esc(m.name)}</p><h2 class="f-title${sp.warm?' wt':''}">${sp.warm?'Calentamiento':cap(word(m))} ${sp.n}<span> de ${sp.t}</span></h2><div class="f-dots" aria-hidden="true">${dots}</div>`;
   const goal = ex.target ? `<p class="muted small" style="margin:8px 0 0">Objetivo: ${esc(ex.target)} ${cardio?'min':'repeticiones'}</p>` : '';
   let body;
   if(cardio){
@@ -1487,8 +1566,8 @@ function focusSet(c){
     body = `<div class="f-tiles">${tile('Kg','w',s.w,step,p?fmt(p.w):null,'decimal')}${tile('Repeticiones','r',s.r,1,p?String(p.r):null,'numeric')}</div>
       ${syncNote(ex,si)}<div id="f-plates">${platesHTML(ex,s)}</div>`;
   }
-  const cta = cardio ? (single?'Cardio acabado':'Bloque acabado') : 'Serie acabada';
-  return `<div class="f-top"><button class="f-hide" data-act="f-hide">${ICON.down}Ocultar</button><span class="f-meta">Descanso: ${clock(restFor(ex))}</span>${HOW[ex.exId]&&m.builtin?`<button class="f-tech" data-act="lib-open" data-id="${ex.exId}">${ICON.info}Técnica</button>`:''}</div>
+  const cta = cardio ? (single?'Cardio acabado':'Bloque acabado') : sp.warm ? 'Calentamiento hecho' : 'Serie acabada';
+  return `<div class="f-top"><button class="f-hide" data-act="f-hide">${ICON.down}Ocultar</button><span class="f-meta">${sp.warm?'Sin descanso':'Descanso: '+clock(restFor(ex))}</span>${HOW[ex.exId]&&m.builtin?`<button class="f-tech" data-act="lib-open" data-id="${ex.exId}">${ICON.info}Técnica</button>`:''}</div>
   <div class="f-head">${head}${goal}</div>
   ${body}
   <div class="f-foot"><button class="btn btn-primary btn-block f-cta" data-act="f-done">${cta}</button></div>`;
@@ -1497,15 +1576,15 @@ function focusRest(c){
   const f=c.f, nx=f.next, nex=S.active.exercises[fIdx(nx.k)], ns=nex.sets[nx.si], nm=exById(nex.exId), newEx=nx.k!==f.k;
   const vals=isCardio(nm) ? (fieldsOf(nm).some(k=>ns[k]!==''&&ns[k]!=null)?setTxt(ns,nm):'') : [ns.w!==''?esc(ns.w)+' kg':'', ns.r!==''?esc(ns.r)+' reps':''].filter(Boolean).join(' × ');
   return `<div class="f-top"><button class="f-hide" data-act="f-hide">${ICON.down}Ocultar</button></div>
-  <div class="f-head"><p class="f-ex">${esc(c.m.name)}: ${isCardio(c.m)?'bloque '+(c.si+1)+' hecho':'serie '+(c.si+1)+' hecha'}</p><h2 class="f-title">Descanso</h2></div>
+  <div class="f-head"><p class="f-ex">${esc(c.m.name)}: ${isCardio(c.m)?'bloque '+setPos(c.ex,c.si).n+' hecho':setPos(c.ex,c.si).lower+(isWarm(c.s)?' hecho':' hecha')}</p><h2 class="f-title">Descanso</h2></div>
   <div class="f-ring"><svg viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="100" class="ring-bg"/><circle cx="110" cy="110" r="100" class="ring-fg" id="f-ring" transform="rotate(-90 110 110)" stroke-dasharray="628.3"/></svg><span class="f-time num" id="f-time" role="timer"></span></div>
   <div class="f-adj"><button class="btn btn-quiet" data-act="f-adj" data-v="-15">−15 s</button><button class="btn btn-quiet" data-act="f-adj" data-v="15">+15 s</button></div>
-  <div class="f-next"><span class="muted small">${newEx?'Siguiente ejercicio':'A continuación'}</span><b>${newEx?esc(nm.name)+', '+word(nm):cap(word(nm))} ${nx.si+1} de ${nex.sets.length}</b>${vals?`<span class="muted small num">${vals}</span>`:''}</div>
+  <div class="f-next"><span class="muted small">${newEx?'Siguiente ejercicio':'A continuación'}</span><b>${newEx?esc(nm.name)+', '+setPos(nex,nx.si).label.toLowerCase():setPos(nex,nx.si).label}</b>${vals?`<span class="muted small num">${vals}</span>`:''}</div>
   <div class="f-foot"><button class="btn btn-primary btn-block f-cta" data-act="f-next">Empezar siguiente serie</button><p class="muted small f-auto">Si no la empiezas tú, empezará sola al acabar el descanso.</p></div>`;
 }
 function miniHTML(c){
   if(c.f.phase==='rest') return `<div class="rest"><button class="mini-main" data-act="f-open"><span class="rt num" id="mini-time"></span><span class="rl">Descanso<small>Toca para abrir</small></span></button><button data-act="f-adj" data-v="15">+15</button><button data-act="f-next">Siguiente</button><span class="fill" id="mini-fill"></span></div>`;
-  return `<div class="rest set"><button class="mini-main" data-act="f-open">${c.f.sw?'<span class="rt num" id="mini-sw"></span>':''}<span class="rl">${esc(c.m.name)}<small>${cap(word(c.m))} ${c.si+1} de ${c.ex.sets.length}</small></span></button><button data-act="f-open">Abrir</button><button data-act="f-stop" aria-label="Salir del modo serie">${ICON.x}</button></div>`;
+  return `<div class="rest set"><button class="mini-main" data-act="f-open">${c.f.sw?'<span class="rt num" id="mini-sw"></span>':''}<span class="rl">${esc(c.m.name)}<small>${setPos(c.ex,c.si).label}</small></span></button><button data-act="f-open">Abrir</button><button data-act="f-stop" aria-label="Salir del modo serie">${ICON.x}</button></div>`;
 }
 function tickFocus(){
   const f=F(); if(!f) return;
@@ -1597,7 +1676,7 @@ async function scheduleRestPush(f){
   const left=(f.restEnd-Date.now())/1000; if(left<4) return;
   const sub=await pushSub(); if(!sub) return;
   const nx=f.next, nex=nx&&S.active&&S.active.exercises[fIdx(nx.k)], nm=nex&&exById(nex.exId);
-  const body=nm?`Siguiente: ${nm.name}, ${word(nm)} ${nx.si+1} de ${nex.sets.length}`:'Empieza la siguiente serie.';
+  const body=nm?`Siguiente: ${nm.name}, ${setPos(nex,nx.si).label.toLowerCase()}`:'Empieza la siguiente serie.';
   const id=f.pushId||alarmId(); f.pushId=id; f.pushCancelled=false; saveActive();
   try{ await pushCall({action:'schedule', id, subscription:sub.toJSON(), delay:Math.round(left), title:'Descanso terminado', body}); }catch(e){}
 }
@@ -1623,7 +1702,9 @@ const A = {
   start(el){ if(S.active){ S.tab='train'; render(); return; } startWorkout(el.dataset.id||null); },
   finish(){ finishWorkout(); },
   async discard(){ if(await ask('Descartar entreno','Se perderán las series que has registrado en este entreno.','Descartar',true)){ S.active=null; saveActive(); stopRest(); render(); } },
-  'use-prev'(el){ const ei=+el.dataset.ei, si=+el.dataset.si; const last=lastPerf(S.active.exercises[ei].exId); const p=last&&last.sets[si]; if(!p) return; const s=S.active.exercises[ei].sets[si]; { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); },
+  'use-prev'(el){ const ei=+el.dataset.ei, si=+el.dataset.si; const last=lastPerf(S.active.exercises[ei].exId); const p=prevFor(S.active.exercises[ei],si,last); if(!p) return; const s=S.active.exercises[ei].sets[si]; { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); },
+  'warm-on'(el){ const ex=S.active.exercises[+el.dataset.ei]; if(addWarm(ex)){ saveActive(); render(); renderFocus(); } },
+  'warm-off'(el){ const ex=S.active.exercises[+el.dataset.ei]; removeWarm(ex); saveActive(); render(); renderFocus(); },
   'set-add'(el){ const ex=S.active.exercises[+el.dataset.ei]; const l=ex.sets[ex.sets.length-1]; ex.sets.push(blankFrom(l,exById(ex.exId))); saveActive(); render(); },
   'set-del'(el){ const ex=S.active.exercises[+el.dataset.ei]; if(ex.sets.length>1) ex.sets.pop(); saveActive(); render(); },
   'ex-up'(el){ closeModal(); move(S.active.exercises,+el.dataset.ei,-1); saveActive(); render(); },
@@ -1654,7 +1735,7 @@ const A = {
   st(el){ const s=stSet(); const f=el.dataset.f, d=num(el.dataset.d);
     stepField(s,f,d); const i=$('#st-'+f); if(i) i.value=fieldVal(s,f);
     stRefresh([f]); },
-  'st-copy'(){ const {ei,si}=S.setEdit; const last=lastPerf(S.active.exercises[ei].exId); const p=last&&last.sets[si]; if(!p) return; const s=stSet(); { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); openModal(setSheet()); },
+  'st-copy'(){ const {ei,si}=S.setEdit; const last=lastPerf(S.active.exercises[ei].exId); const p=prevFor(S.active.exercises[ei],si,last); if(!p) return; const s=stSet(); { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); openModal(setSheet()); },
   'st-done'(){ const {ei}=S.setEdit; const ex=S.active.exercises[ei]; const s=stSet(); s.done=!s.done;
     if(s.done){ if(s.r===''&&ex.target){ const t=parseInt(ex.target,10); if(isFinite(t)) s.r=String(t);} }
     closeModal(); saveActive(); render(); },

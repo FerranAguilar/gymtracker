@@ -8,6 +8,7 @@ Es una web estática: HTML, CSS y JavaScript sin proceso de compilación. Los da
 
 - **Rutinas**: crea plantillas con ejercicios, series y repeticiones objetivo (admite rangos como `8-12`).
 - **Entrenamiento serie a serie**: pulsa «Empezar ejercicio» para abrir una ventana grande con los kg y las repeticiones de cada serie. «Serie acabada» lanza el descanso, que se puede ajustar ±15 s, y la siguiente serie empieza sola al terminar.
+- **Series de calentamiento**: botón «Calentamiento» en cada ejercicio. Añade arriba series con peso creciente (siempre por debajo de la primera serie) y repeticiones decrecientes, sin descanso entre ellas. Se ajustan solas si cambias el peso de la primera serie, el ejercicio las recuerda para la próxima vez y no cuentan para el tonelaje, los récords ni el progreso.
 - **Descanso por ejercicio**, editable desde la propia pantalla del entrenamiento.
 - **Memoria por ejercicio**: cada ejercicio recuerda las series, kg, repeticiones y descanso de la última vez.
 - **La serie 1 rellena las demás** al cambiar sus kg o repeticiones.
@@ -128,7 +129,7 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v4` a `gymtracker-v5`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v5` a `gymtracker-v6`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 
