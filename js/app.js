@@ -833,7 +833,7 @@ function exBest(exId, before=Infinity){
     for(const st of e.sets){ const v=e1rm(st.w,st.r); if(v>best){best=v; top=st;} } }
   return {best, top};
 }
-function volume(s){ let v=0; for(const e of s.exercises) for(const st of e.sets) v+=(st.w||0)*(st.r||0); return v; }
+function volume(s){ let v=0; for(const e of s.exercises) for(const st of (e.warm||[]).concat(e.sets)) v+=(st.w||0)*(st.r||0); return v; }   // el calentamiento también cuenta
 function setsCount(s){ return s.exercises.reduce((a,e)=>a+e.sets.length,0); }
 
 /* ---------- Plates ---------- */
@@ -995,7 +995,7 @@ function updateChrome(){
   else { pl.hidden=true; pl.innerHTML=''; }
   updateTimes(); keepAwake(!!S.active);
 }
-function activeTonnage(){ let t=0; for(const e of S.active.exercises) for(const s of e.sets) if(s.done&&!isWarm(s)) t+=num(s.w)*num(s.r); return t; }
+function activeTonnage(){ let t=0; for(const e of S.active.exercises) for(const s of e.sets) if(s.done) t+=num(s.w)*num(s.r); return t; }
 function updateTimes(){ if(!S.active) return; const t=clock((Date.now()-S.active.start)/1000); const e=$('#elapsed'); if(e) e.textContent=t; const p=$('#pill-time'); if(p) p.textContent=t; }
 
 /* Drag a sheet down to close it */
@@ -1049,8 +1049,8 @@ function syncNote(ex, si){
 /* ---------- Series de calentamiento ----------
    Van al principio del ejercicio, marcadas con wu:true. Se calculan a partir del peso de la
    primera serie efectiva: pesos crecientes (siempre por debajo de ella) y repeticiones
-   decrecientes. Entre ellas no hay descanso. En el entreno guardado se separan (e.warm),
-   así no cuentan para el tonelaje, los récords, el 1RM ni el progreso. */
+   decrecientes. Entre ellas no hay descanso. En el entreno guardado se separan (e.warm):
+   suman al tonelaje, pero no cuentan para los récords, el 1RM ni el número de series. */
 const isWarm = s => !!(s && s.wu);
 const warmCount = ex => ex.sets.filter(isWarm).length;
 const firstWork = ex => { const i=ex.sets.findIndex(s=>!isWarm(s)); return i<0?ex.sets.length:i; };
@@ -1244,6 +1244,7 @@ function progDetail(exId){
   for(const s of S.sessions.slice().sort((a,b)=>a.date-b.date)){
     const e=s.exercises.find(x=>x.exId===exId); if(!e) continue;
     let se=0, sw=0, vol=0; for(const st of e.sets){ const v=e1rm(st.w,st.r); if(v>se) se=v; if(st.w>sw) sw=st.w; vol+=st.w*st.r; if(v>bestE){bestE=v; bestSet=st;} }
+    for(const st of (e.warm||[])) vol+=(st.w||0)*(st.r||0);
     if(sw>bestW) bestW=sw; if(vol>bestVol) bestVol=vol;
     pts.push({t:s.date, e:se, w:sw});
   }
