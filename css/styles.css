@@ -416,5 +416,15 @@ div.tile-v{display:block}
 .au-alt{text-align:center;margin:14px 0 4px}
 .btn-link{background:none;border:0;padding:6px 2px;color:var(--accent);font-weight:700}
 .co-err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--ink);border-radius:10px;padding:10px 12px;margin:0 0 14px;font-size:.92rem}
+.set.warm .set-n{color:var(--p-yellow);font-size:.85rem;font-weight:800}
+.set.warm .cell{font-weight:600;font-size:1.05rem;color:var(--muted)}
+.set.warm.done .cell{color:var(--ink)}
+.ex-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.warm-btn{color:var(--muted)}
+.warm-btn svg{width:16px;height:16px}
+.f-dots i.w{width:14px;opacity:.8}
+.f-dots i.w:not(.on):not(.cur){background:color-mix(in srgb,var(--p-yellow) 45%,var(--line))}
+.f-title.wt{font-size:2.35rem;line-height:1.05}
+.f-title.wt span{font-size:1.4rem}
 .sync-note{margin:10px 2px 0;text-align:center}
 @media (min-width:700px){.st-row{max-width:420px;margin:0 auto}}
