@@ -1428,7 +1428,7 @@ function openSettings(){
     <div class="field"><span>Avisos del descanso</span>
       <div class="set-row"><span>Sonido</span><div class="seg seg-sm">${[['1','Activado'],['0','Desactivado']].map(([v,l])=>`<button data-act="set-sound" data-v="${v}" aria-pressed="${(st.sound!==false?'1':'0')===v}">${l}</button>`).join('')}</div></div>
       ${st.sound!==false?'<button class="btn btn-text" data-act="test-sound">Probar el sonido</button>':''}
-      <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y al terminar. Suena con la app en pantalla; en iPhone no suena con el modo silencio activado.</p>
+      <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y una alarma al terminar. Suena con la app en pantalla y sube o baja con el volumen del móvil; en iPhone no suena con el modo silencio activado.</p>
       ${pushRowHTML()}</div>
     <div class="field"><span>Tus datos</span><p style="margin:0 0 12px" class="small">${S.mode==='db'?'Se guardan en tu cuenta y solo tú puedes verlos, aunque compartas el enlace de esta página.':(Cloud.user?'Se guardan en este dispositivo y en tu cuenta.':'Se guardan solo en este navegador. Inicia sesión o exporta una copia de vez en cuando para no perderlos.')}</p>
       <div class="row-gap"><button class="btn btn-quiet" data-act="export">Exportar copia</button><label class="btn btn-quiet" style="cursor:pointer">Importar copia<input type="file" accept=".json,application/json" data-ch="import" hidden></label></div></div>
@@ -1613,26 +1613,51 @@ const PUSH_URL = 'https://tdtezlgausvwlnnjibuo.supabase.co/functions/v1/push';
 
 /* Sonido: el navegador solo deja sonar audio después de un toque del usuario,
    así que el contexto de audio se desbloquea con el primer toque en la app. */
-let audioCtx=null;
+let audioCtx=null, audioOut=null;
 function unlockAudio(){
   try{
-    if(!audioCtx){ const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC(); }
+    if(!audioCtx){
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC();
+      // Compresor a la salida: permite subir mucho el volumen sin que el sonido distorsione.
+      const comp=audioCtx.createDynamicsCompressor();
+      comp.threshold.value=-14; comp.knee.value=6; comp.ratio.value=8; comp.attack.value=0.002; comp.release.value=0.12;
+      const make=audioCtx.createGain(); make.gain.value=1.4;
+      comp.connect(make).connect(audioCtx.destination); audioOut=comp;
+    }
     if(audioCtx.state==='suspended') audioCtx.resume();
   }catch(e){}
 }
 ['pointerdown','keydown'].forEach(t=>document.addEventListener(t,unlockAudio,{passive:true}));
-function beep(freq, dur, at=0, vol=.35){
+function beep(freq, dur, at=0, vol=.35, type='sine'){
   if(!audioCtx||audioCtx.state!=='running') return;
   try{
     const t=audioCtx.currentTime+at, o=audioCtx.createOscillator(), g=audioCtx.createGain();
-    o.type='sine'; o.frequency.value=freq;
-    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t+dur+0.03);
+    o.type=type; o.frequency.value=freq;
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.008);
+    g.gain.setValueAtTime(vol,t+Math.max(0.01,dur-0.04)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g).connect(audioOut||audioCtx.destination); o.start(t); o.stop(t+dur+0.03);
   }catch(e){}
 }
 const soundOn=()=>S.settings.sound!==false;
-function soundTick(){ if(soundOn()) beep(880,.12); }
-function soundEnd(){ if(soundOn()){ beep(1175,.18,0,.45); beep(1568,.32,.2,.45); } }
+/* En iPhone (Safari 17+), un sonido «transient» baja un momento la música de otras apps */
+let duckTimer=null;
+function duckOthers(ms){
+  try{
+    if(!navigator.audioSession) return;
+    navigator.audioSession.type='transient';
+    clearTimeout(duckTimer); duckTimer=setTimeout(()=>{ try{ navigator.audioSession.type='ambient'; }catch(e){} }, ms);
+  }catch(e){}
+}
+function soundTick(){ if(soundOn()){ beep(1320,.1,0,.5,'triangle'); beep(2640,.1,0,.18,'sine'); } }
+/* Fin del descanso: tres ráfagas de dos tonos agudos (1,7-2,6 kHz), que destacan sobre la música */
+function soundEnd(){
+  if(!soundOn()) return;
+  duckOthers(1800);
+  [0,.34,.68].forEach(t=>{
+    beep(1760,.14,t,.55,'square'); beep(880,.14,t,.35,'triangle');
+    beep(2637,.16,t+.15,.55,'square'); beep(1319,.16,t+.15,.35,'triangle');
+  });
+}
 
 /* Notificaciones push: funcionan con la app instalada (en el móvil, añadida a la pantalla de inicio). */
 const isIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
