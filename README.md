@@ -67,7 +67,7 @@ Se abre a pantalla completa, como una app, y funciona sin cobertura.
 
 ## Avisos del descanso
 
-**Sonido.** Pitidos en los 3 últimos segundos del descanso y uno doble al terminar. Se activa o desactiva en **Ajustes → Avisos del descanso**. Suena con la app en pantalla (la app mantiene la pantalla encendida durante el entreno). En iPhone no suena con el modo silencio activado.
+**Sonido.** Pitidos en los 3 últimos segundos del descanso y una alarma al terminar: tres ráfagas de tonos agudos (1,7-2,6 kHz) para que se oiga aunque estés escuchando música. En iPhone con Safari 17 o posterior, la app pide al sistema que baje un momento la música mientras suena. Se activa o desactiva en **Ajustes → Avisos del descanso**. Suena con la app en pantalla (la app mantiene la pantalla encendida durante el entreno). En iPhone no suena con el modo silencio activado.
 
 **Notificaciones push.** Avisan al acabar el descanso aunque el móvil esté bloqueado o estés en otra app. Se activan en **Ajustes → Avisos del descanso → Activar notificaciones**, y allí mismo puedes enviar una prueba.
 
@@ -129,7 +129,7 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v6` a `gymtracker-v7`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v7` a `gymtracker-v8`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 
