@@ -284,6 +284,7 @@ const ICON = {
   x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  grip:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>',
   back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>'
 };
 
@@ -904,6 +905,7 @@ function viewWorkout(){
   const total=a.exercises.reduce((n,e)=>n+e.sets.length,0), done=a.exercises.reduce((n,e)=>n+e.sets.filter(s=>s.done).length,0);
   let h = `<div class="wk-top"><h1 class="view-title">${esc(a.name)}</h1><p class="view-sub">Empezado a las ${dTime.format(a.start)}${total?`, ${done} de ${total} series hechas`:''}.${!done&&total?' Pulsa «Empezar ejercicio» para ir serie a serie.':''}</p></div>`;
   if(!a.exercises.length) h += `<div class="empty"><p>Añade el primer ejercicio para empezar a registrar series.</p></div>`;
+  if(a.exercises.length) h += `<div class="ex-list">`;
   a.exercises.forEach((ex,ei)=>{
     const meta=exById(ex.exId); const last=lastPerf(ex.exId); const fc=!!(f&&f.k===ex.k); const cardio=isCardio(meta), u=unitOf(meta), W=word(meta);
     const doneN=ex.sets.filter(s=>s.done).length, all=doneN===ex.sets.length;
@@ -911,8 +913,8 @@ function viewWorkout(){
     const cta = fc ? (f.phase==='rest'?'Volver al descanso':(ps=>`Volver ${art(ps)==='el'?'al':'a la'} ${ps.lower}`)(setPos(ex,Math.min(f.si,ex.sets.length-1)))) : all ? (cardio?'Hacer otro bloque':'Hacer otra serie') : doneN ? (ps=>`Continuar con ${art(ps)} ${ps.lower}`)(setPos(ex,firstUndone(ex))) : 'Empezar ejercicio';
     const nWarm=warmCount(ex), warmDone=ex.sets.some(s=>isWarm(s)&&s.done), workDone=ex.sets.some(s=>!isWarm(s)&&s.done);
     const info=[]; if(ex.target) info.push(cardio?`Objetivo ${esc(ex.target)} min`:`Objetivo ${workCount(ex)} × ${esc(ex.target)}`); if(last) info.push('Última vez '+ago(last.date));
-    h += `<article class="ex${fc?' focus':''}" style="--g:${GROUP[meta.group]?.color}">
-      <header class="ex-head"><button class="ex-title" data-act="lib-open" data-id="${ex.exId}"><h3>${esc(meta.name)}</h3>${info.length?`<p class="muted small">${info.join('. ')}</p>`:''}</button>
+    h += `<article class="ex${fc?' focus':''}" style="--g:${GROUP[meta.group]?.color}" data-sort="${ei}">
+      <header class="ex-head"><span class="drag-h" data-drag="ex" title="Arrastra para cambiar el orden" aria-hidden="true">${ICON.grip}</span><button class="ex-title" data-act="lib-open" data-id="${ex.exId}"><h3>${esc(meta.name)}</h3>${info.length?`<p class="muted small">${info.join('. ')}</p>`:''}</button>
         <button class="icon-btn more" data-act="ex-menu" data-ei="${ei}" aria-label="Opciones de ${esc(meta.name)}">${ICON.more}</button></header>
       <div class="sets" role="table">
         <div class="set set-h" role="row"><span style="text-align:center">#</span><span>Anterior</span>${cardio?`<span>Tiempo</span><span>${u}</span>`:'<span>kg</span><span>Reps</span>'}<span class="sr">Estado</span></div>
@@ -923,7 +925,7 @@ function viewWorkout(){
           ${u?`<button class="cell num ${s.d===''?'empty':''}" data-act="cell" data-ei="${ei}" data-si="${si}" aria-label="Editar ${W} ${si+1}">${s.d===''?u:esc(s.d)}</button>`:'<span></span>'}`
           :`<button class="cell num ${s.w===''?'empty':''}" data-act="cell" data-ei="${ei}" data-si="${si}" aria-label="Editar serie ${si+1}">${s.w===''?'kg':esc(s.w)}</button>
           <button class="cell num ${s.r===''?'empty':''}" data-act="cell" data-ei="${ei}" data-si="${si}" aria-label="Editar serie ${si+1}">${s.r===''?'reps':esc(s.r)}</button>`}
-          <span class="st-ic" aria-label="${s.done?'Hecha':'Pendiente'}">${s.done?ICON.check:''}</span>
+          <button class="st-ic${s.done?' on':''}" data-act="set-tick" data-ei="${ei}" data-si="${si}" aria-pressed="${s.done}" aria-label="${s.done?'Desmarcar':'Marcar'} ${sp.label.toLowerCase()} como ${sp.warm?'hecho':'hecha'}">${ICON.check}</button>
         </div>`;}).join('')}
       </div>
       <div class="ex-foot"><button class="btn btn-text add-set" data-act="set-add" data-ei="${ei}">${ICON.plus}${cardio?'Añadir bloque':'Añadir serie'}</button>
@@ -933,6 +935,7 @@ function viewWorkout(){
       <button class="btn ${all&&!fc?'btn-quiet':'btn-primary'} btn-block big ex-cta" data-act="ex-start" data-ei="${ei}">${ICON.play}${cta}</button>
     </article>`;
   });
+  if(a.exercises.length) h += `</div>`;
   h += `<div class="wk-actions"><button class="btn btn-quiet btn-block big" data-act="ex-add">${ICON.plus}Añadir ejercicio</button><button class="btn btn-danger" data-act="discard">Descartar entreno</button></div>`;
   return h;
 }
@@ -1104,7 +1107,6 @@ function refreshWarm(ex){
 function shiftFocus(ex, from, delta){
   const f=S.active&&S.active.focus; if(!f||!delta) return;
   if(f.k===ex.k && f.si>=from) f.si=Math.max(0,f.si+delta);
-  if(f.next&&f.next.k===ex.k&&f.next.si>=from) f.next.si=Math.max(0,f.next.si+delta);
 }
 function addWarm(ex){
   const plan=warmPlan(ex);
@@ -1179,7 +1181,8 @@ function viewEditor(){
   <p class="muted small" style="margin:0 0 10px">Series y repeticiones objetivo. Las repeticiones admiten rangos, como 8-12.</p>
   <div class="ritems">`;
   r.items.forEach((it,i)=>{ const m=exById(it.exId);
-    h+=`<div class="ri" style="--g:${GROUP[m.group]?.color}">
+    h+=`<div class="ri" style="--g:${GROUP[m.group]?.color}" data-sort="${i}">
+      <span class="drag-h" data-drag="ri" title="Arrastra para cambiar el orden" aria-hidden="true">${ICON.grip}</span>
       <div class="ri-name">${esc(m.name)}</div>
       <div class="ri-nums"><input class="num" inputmode="numeric" data-in="ri-sets" data-i="${i}" value="${esc(it.sets)}" aria-label="Series"><span class="muted">${isCardio(m)?(String(it.sets)==='1'?'bloque de':'bloques de'):'series de'}</span><input class="num reps" data-in="ri-reps" data-i="${i}" value="${esc(it.reps)}" aria-label="${isCardio(m)?'Minutos':'Repeticiones'}"><span class="muted">${isCardio(m)?'min':'reps'}</span></div>
       <div class="ri-tools"><button class="icon-btn" data-act="ri-menu" data-i="${i}" aria-label="Opciones de ${esc(m.name)}">${ICON.more}</button></div>
@@ -1330,9 +1333,9 @@ function exRow(e,act,extra=''){
   return `<button class="pitem" data-act="${act}" data-id="${e.id}" style="--g:${GROUP[e.group]?.color}"><i></i><span class="pn">${esc(e.name)}<small>${esc(e.muscle||'')}, ${esc((EQUIP[e.equip]||'').toLowerCase())}${e.builtin?'':', creado por ti'}</small></span>${extra}</button>`;
 }
 
-function openPicker(onPick){ S.picker={q:'', group:null, equip:null, onPick}; openModal(pickerShell(), null, 'tall'); }
+function openPicker(onPick, title){ S.picker={q:'', group:null, equip:null, onPick, title:title||'Añadir ejercicio'}; openModal(pickerShell(), null, 'tall'); }
 function pickerShell(){
-  return `<div class="sheet-head"><h2>Añadir ejercicio</h2><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div>
+  return `<div class="sheet-head"><h2>${esc(S.picker.title)}</h2><button class="icon-btn" data-act="modal-close" aria-label="Cerrar">${ICON.x}</button></div>
   <div class="sheet-body" style="padding-bottom:4px"><input class="text-in" data-in="picker-q" placeholder="Buscar: press, glúteo, polea, squat…" autocomplete="off" autofocus>
   <div id="pk-chips">${filterChips('pk',S.picker)}</div></div>
   <div class="sheet-body" id="pk-list" style="padding-top:0">${pickerList()}</div>`;
@@ -1428,7 +1431,7 @@ function openSettings(){
     <div class="field"><span>Avisos del descanso</span>
       <div class="set-row"><span>Sonido</span><div class="seg seg-sm">${[['1','Activado'],['0','Desactivado']].map(([v,l])=>`<button data-act="set-sound" data-v="${v}" aria-pressed="${(st.sound!==false?'1':'0')===v}">${l}</button>`).join('')}</div></div>
       ${st.sound!==false?'<button class="btn btn-text" data-act="test-sound">Probar el sonido</button>':''}
-      <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y una alarma al terminar. Suena con la app en pantalla y sube o baja con el volumen del móvil; en iPhone no suena con el modo silencio activado.</p>
+      <p class="muted small" style="margin:4px 0 12px">Pitidos en los 3 últimos segundos y una alarma al terminar. Suena con la app en pantalla, por encima de tu música y también con auriculares, y sube o baja con el volumen del móvil. En iPhone, el modo silencio apaga los sonidos de las webs aunque lleves auriculares: si no lo oyes, quita el modo silencio (tu música no se para).</p>
       ${pushRowHTML()}</div>
     <div class="field"><span>Tus datos</span><p style="margin:0 0 12px" class="small">${S.mode==='db'?'Se guardan en tu cuenta y solo tú puedes verlos, aunque compartas el enlace de esta página.':(Cloud.user?'Se guardan en este dispositivo y en tu cuenta.':'Se guardan solo en este navegador. Inicia sesión o exporta una copia de vez en cuando para no perderlos.')}</p>
       <div class="row-gap"><button class="btn btn-quiet" data-act="export">Exportar copia</button><label class="btn btn-quiet" style="cursor:pointer">Importar copia<input type="file" accept=".json,application/json" data-ch="import" hidden></label></div></div>
@@ -1475,16 +1478,58 @@ function F(){ return S.active ? S.active.focus : null; }
 function fIdx(k){ return S.active.exercises.findIndex(e=>e.k===k); }
 function restFor(ex){ return ex && ex.rest!=null ? ex.rest : (num(S.settings.rest)||90); }
 function firstUndone(ex){ return ex.sets.findIndex(s=>!s.done); }
-function nextAfter(ei, si){
-  const ex=S.active.exercises[ei];
-  for(let j=si+1;j<ex.sets.length;j++) if(!ex.sets[j].done) return {k:ex.k, si:j};
-  for(let i=ei+1;i<S.active.exercises.length;i++){ const e=S.active.exercises[i]; const j=firstUndone(e); if(j>=0) return {k:e.k, si:j}; }
+/* Siguiente serie pendiente: la primera sin hacer del ejercicio de referencia y, si no
+   queda ninguna, la de los ejercicios de debajo. Se calcula en el momento, así que el
+   descanso no se rompe aunque cambies, muevas, reemplaces o quites ejercicios. */
+function nextPending(ref){
+  const xs=S.active.exercises; let ei=fIdx(ref.k);
+  if(ei<0) ei=Math.max(0, Math.min(ref.ei??0, xs.length));   // el ejercicio ya no está: el que ocupa su sitio
+  for(let i=ei;i<xs.length;i++){ const j=firstUndone(xs[i]); if(j>=0) return {k:xs[i].k, si:j}; }
   return null;
 }
 function focusCtx(){
-  const f=F(); if(!f) return null; const ei=fIdx(f.k); if(ei<0) return null;
+  const f=F(); if(!f) return null;
+  if(f.phase==='rest') return {f, rest:true, nx:nextPending(f)};       // el descanso no depende de ningún ejercicio
+  const ei=fIdx(f.k); if(ei<0) return null;
   const ex=S.active.exercises[ei]; if(!ex.sets.length) return null; const si=Math.min(f.si, ex.sets.length-1);
   return {f, ei, ex, si, s:ex.sets[si], m:exById(ex.exId)};
+}
+function markDone(ex, s){
+  s.done=true;
+  if(!isCardio(exById(ex.exId)) && s.r==='' && ex.target){ const t=parseInt(ex.target,10); if(isFinite(t)) s.r=String(t); }
+}
+/* Empieza el descanso de una serie hecha. Si ya había otro en marcha, este lo sustituye. */
+function startRest(ei, si, open){
+  const ex=S.active.exercises[ei], m=exById(ex.exId), sp=setPos(ex,si);
+  const prev=F(); if(prev) cancelRestPush(prev);
+  const total=restFor(ex);
+  S.active.focus={k:ex.k, si, ei, phase:'rest', open:!!open, restTotal:total, restEnd:Date.now()+total*1000, beep:null,
+    doneTxt:`${m.name}: ${isCardio(m)?'bloque '+sp.n+' hecho':sp.lower+' hecha'}`};
+  prepAudio();
+  saveActive(); render(); renderFocus(); startTickers();
+  scheduleRestPush(S.active.focus);
+}
+/* Tic de la lista: marca la serie como hecha y empieza su descanso (o la desmarca) */
+function tickSet(ei, si){
+  ensureKeys();
+  const ex=S.active.exercises[ei], s=ex&&ex.sets[si]; if(!s) return;
+  const f=F();
+  if(s.done){
+    s.done=false;
+    if(f&&f.phase==='rest'&&f.k===ex.k&&f.si===si){ cancelRestPush(f); S.active.focus=null; }
+    saveActive(); render(); renderFocus(); return;
+  }
+  if(f&&f.phase==='set'&&f.k===ex.k&&Math.min(f.si,ex.sets.length-1)===si){ finishSet(); return; }
+  markDone(ex,s); vib(30);
+  const nx=nextPending({k:ex.k, ei});
+  if(!nx){
+    if(f){ cancelRestPush(f); S.active.focus=null; }
+    saveActive(); render(); renderFocus();
+    if(S.active.exercises.every(e=>e.sets.every(x=>x.done))) toast('Todo hecho. Pulsa Terminar para guardar el entreno.');
+    return;
+  }
+  if(isWarm(s)){ saveActive(); render(); renderFocus(); return; }   // el calentamiento no lleva descanso
+  startRest(ei, si, false);
 }
 function startExercise(ei){
   ensureKeys();
@@ -1494,12 +1539,12 @@ function startExercise(ei){
   saveActive(); render(); renderFocus(); startTickers();
 }
 function finishSet(){
-  const c=focusCtx(); if(!c) return;
+  const c=focusCtx(); if(!c||c.rest) return;
   const {f,ei,ex,si,s}=c;
   if(f.sw){ s.t=Math.round(swElapsed(f)); delete f.sw; }
-  s.done=true; if(!isCardio(c.m)&&s.r===''&&ex.target){ const t=parseInt(ex.target,10); if(isFinite(t)) s.r=String(t); }
+  markDone(ex,s);
   vib(30);
-  const nx=nextAfter(ei,si);
+  const nx=nextPending({k:ex.k, ei});
   if(!nx){
     S.active.focus=null; saveActive(); renderFocus(); render();
     toast(S.active.exercises.every(e=>e.sets.every(x=>x.done)) ? 'Todo hecho. Pulsa Terminar para guardar el entreno.' : 'Ejercicio completado.');
@@ -1507,16 +1552,13 @@ function finishSet(){
   }
   if(isWarm(s) && nx.k===ex.k){ S.active.focus={k:ex.k, si:nx.si, phase:'set', open:f.open}; saveActive(); render(); renderFocus(); return; }
   if(nx.k===ex.k){ const ns=ex.sets[nx.si]; if(!isWarm(ns)) fieldsOf(c.m).forEach(k=>{ if(ns[k]===''||ns[k]==null) ns[k]=s[k]; }); }
-  const total=restFor(ex);
-  Object.assign(f,{phase:'rest', restTotal:total, restEnd:Date.now()+total*1000, next:nx, beep:null});
-  saveActive(); render(); renderFocus();
-  scheduleRestPush(f);
+  startRest(ei, si, f.open);
 }
 function goNext(auto){
-  const f=F(); if(!f||!f.next) return;
+  const f=F(); if(!f||f.phase!=='rest') return;
   if(!auto) cancelRestPush(f);
-  const nx=f.next;
-  if(fIdx(nx.k)<0){ S.active.focus=null; }
+  const nx=nextPending(f);
+  if(!nx){ S.active.focus=null; if(auto) toast('Descanso terminado.'); }
   else S.active.focus={k:nx.k, si:nx.si, phase:'set', open:f.open};
   if(auto) vib([200,100,200]);
   saveActive(); render(); renderFocus();
@@ -1578,17 +1620,22 @@ function focusSet(c){
   <div class="f-foot"><button class="btn btn-primary btn-block f-cta" data-act="f-done">${cta}</button></div>`;
 }
 function focusRest(c){
-  const f=c.f, nx=f.next, nex=S.active.exercises[fIdx(nx.k)], ns=nex.sets[nx.si], nm=exById(nex.exId), newEx=nx.k!==f.k;
-  const vals=isCardio(nm) ? (fieldsOf(nm).some(k=>ns[k]!==''&&ns[k]!=null)?setTxt(ns,nm):'') : [ns.w!==''?esc(ns.w)+' kg':'', ns.r!==''?esc(ns.r)+' reps':''].filter(Boolean).join(' × ');
+  const f=c.f, nx=c.nx;
+  let next='<span class="muted small">No quedan series pendientes</span>';
+  if(nx){
+    const nex=S.active.exercises[fIdx(nx.k)], ns=nex.sets[nx.si], nm=exById(nex.exId), newEx=nx.k!==f.k;
+    const vals=isCardio(nm) ? (fieldsOf(nm).some(k=>ns[k]!==''&&ns[k]!=null)?setTxt(ns,nm):'') : [ns.w!==''?esc(ns.w)+' kg':'', ns.r!==''?esc(ns.r)+' reps':''].filter(Boolean).join(' × ');
+    next=`<span class="muted small">${newEx?'Siguiente ejercicio':'A continuación'}</span><b>${newEx?esc(nm.name)+', '+setPos(nex,nx.si).label.toLowerCase():setPos(nex,nx.si).label}</b>${vals?`<span class="muted small num">${vals}</span>`:''}`;
+  }
   return `<div class="f-top"><button class="f-hide" data-act="f-hide">${ICON.down}Ocultar</button></div>
-  <div class="f-head"><p class="f-ex">${esc(c.m.name)}: ${isCardio(c.m)?'bloque '+setPos(c.ex,c.si).n+' hecho':setPos(c.ex,c.si).lower+(isWarm(c.s)?' hecho':' hecha')}</p><h2 class="f-title">Descanso</h2></div>
+  <div class="f-head"><p class="f-ex">${esc(f.doneTxt||'Serie hecha')}</p><h2 class="f-title">Descanso</h2></div>
   <div class="f-ring"><svg viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="100" class="ring-bg"/><circle cx="110" cy="110" r="100" class="ring-fg" id="f-ring" transform="rotate(-90 110 110)" stroke-dasharray="628.3"/></svg><span class="f-time num" id="f-time" role="timer"></span></div>
   <div class="f-adj"><button class="btn btn-quiet" data-act="f-adj" data-v="-15">−15 s</button><button class="btn btn-quiet" data-act="f-adj" data-v="15">+15 s</button></div>
-  <div class="f-next"><span class="muted small">${newEx?'Siguiente ejercicio':'A continuación'}</span><b>${newEx?esc(nm.name)+', '+setPos(nex,nx.si).label.toLowerCase():setPos(nex,nx.si).label}</b>${vals?`<span class="muted small num">${vals}</span>`:''}</div>
-  <div class="f-foot"><button class="btn btn-primary btn-block f-cta" data-act="f-next">Empezar siguiente serie</button><p class="muted small f-auto">Si no la empiezas tú, empezará sola al acabar el descanso.</p></div>`;
+  <div class="f-next">${next}</div>
+  <div class="f-foot">${nx?'<button class="btn btn-primary btn-block f-cta" data-act="f-next">Empezar siguiente serie</button><p class="muted small f-auto">Si no la empiezas tú, empezará sola al acabar el descanso.</p>':'<button class="btn btn-quiet btn-block f-cta" data-act="f-stop">Terminar el descanso</button>'}</div>`;
 }
 function miniHTML(c){
-  if(c.f.phase==='rest') return `<div class="rest"><button class="mini-main" data-act="f-open"><span class="rt num" id="mini-time"></span><span class="rl">Descanso<small>Toca para abrir</small></span></button><button data-act="f-adj" data-v="15">+15</button><button data-act="f-next">Siguiente</button><span class="fill" id="mini-fill"></span></div>`;
+  if(c.f.phase==='rest') return `<div class="rest"><button class="mini-main" data-act="f-open"><span class="rt num" id="mini-time"></span><span class="rl">Descanso<small>Toca para abrir</small></span></button><button data-act="f-adj" data-v="15">+15</button>${c.nx?'<button data-act="f-next">Siguiente</button>':'<button data-act="f-stop" aria-label="Terminar el descanso">'+ICON.x+'</button>'}<span class="fill" id="mini-fill"></span></div>`;
   return `<div class="rest set"><button class="mini-main" data-act="f-open">${c.f.sw?'<span class="rt num" id="mini-sw"></span>':''}<span class="rl">${esc(c.m.name)}<small>${setPos(c.ex,c.si).label}</small></span></button><button data-act="f-open">Abrir</button><button data-act="f-stop" aria-label="Salir del modo serie">${ICON.x}</button></div>`;
 }
 function tickFocus(){
@@ -1598,6 +1645,7 @@ function tickFocus(){
   const visible=document.visibilityState==='visible';
   if(left<=0){ if(left>-3) soundEnd(); goNext(true); return; }
   const sec=Math.ceil(left);
+  if(left<=6 && visible && audioCtx && audioCtx.state!=='running' && audioCtx.state!=='closed') audioCtx.resume().catch(()=>{});   // listo antes de los pitidos
   if(sec<=3 && f.beep!==sec && visible){ f.beep=sec; soundTick(); }
   if(left<=PUSH_CANCEL_BEFORE && visible) cancelRestPush(f,true);
   const t=clock(Math.ceil(left)), pct=Math.max(0,Math.min(1,left/f.restTotal));
@@ -1611,52 +1659,71 @@ function fRefresh(c, fields){ if(fields) syncSets(c.ex, c.si, fields); const pl=
 /* ---------- Avisos del descanso: sonido y notificaciones push ---------- */
 const PUSH_URL = 'https://tdtezlgausvwlnnjibuo.supabase.co/functions/v1/push';
 
-/* Sonido: el navegador solo deja sonar audio después de un toque del usuario,
-   así que el contexto de audio se desbloquea con el primer toque en la app. */
+/* Sonido: el navegador solo deja sonar audio después de un toque del usuario.
+   - El contexto de audio se crea (o se reanuda) con cada toque en la app.
+   - Al empezar cada descanso se crea uno nuevo: si entre medias has conectado o quitado
+     los auriculares, el anterior puede quedarse mudo (pasa en iPhone).
+   - Si el sistema lo ha pausado (música de otra app, llamada, pantalla bloqueada), se
+     reanuda antes de sonar en vez de quedarse en silencio.
+   - En iPhone se usa la sesión «ambient»: suena por encima de tu música sin pararla. */
 let audioCtx=null, audioOut=null;
+function audioSessionAmbient(){ try{ if(navigator.audioSession && navigator.audioSession.type!=='ambient') navigator.audioSession.type='ambient'; }catch(e){} }
+function makeAudio(){
+  const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return null;
+  audioSessionAmbient();
+  const ctx=new AC();
+  // Compresor a la salida: permite subir mucho el volumen sin que el sonido distorsione.
+  const comp=ctx.createDynamicsCompressor();
+  comp.threshold.value=-14; comp.knee.value=6; comp.ratio.value=8; comp.attack.value=0.002; comp.release.value=0.12;
+  const make=ctx.createGain(); make.gain.value=1.4;
+  comp.connect(make).connect(ctx.destination);
+  ctx.onstatechange=()=>{ if(ctx===audioCtx && ctx.state!=='running' && ctx.state!=='closed' && document.visibilityState==='visible' && F()&&F().phase==='rest') ctx.resume().catch(()=>{}); };
+  audioCtx=ctx; audioOut=comp;
+  return ctx;
+}
+/* Un instante de silencio: en iPhone es lo que termina de «desbloquear» el audio dentro de un toque */
+function primeAudio(){ try{ const b=audioCtx.createBuffer(1,1,audioCtx.sampleRate), src=audioCtx.createBufferSource(); src.buffer=b; src.connect(audioCtx.destination); src.start(0); }catch(e){} }
 function unlockAudio(){
   try{
-    if(!audioCtx){
-      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return; audioCtx=new AC();
-      // Compresor a la salida: permite subir mucho el volumen sin que el sonido distorsione.
-      const comp=audioCtx.createDynamicsCompressor();
-      comp.threshold.value=-14; comp.knee.value=6; comp.ratio.value=8; comp.attack.value=0.002; comp.release.value=0.12;
-      const make=audioCtx.createGain(); make.gain.value=1.4;
-      comp.connect(make).connect(audioCtx.destination); audioOut=comp;
-    }
-    if(audioCtx.state==='suspended') audioCtx.resume();
+    if(!audioCtx||audioCtx.state==='closed'){ if(!makeAudio()) return; primeAudio(); }
+    if(audioCtx.state!=='running') audioCtx.resume().catch(()=>{});
   }catch(e){}
 }
-['pointerdown','keydown'].forEach(t=>document.addEventListener(t,unlockAudio,{passive:true}));
-function beep(freq, dur, at=0, vol=.35, type='sine'){
-  if(!audioCtx||audioCtx.state!=='running') return;
+/* Al empezar un descanso (siempre es un toque): contexto nuevo y listo para sonar */
+function prepAudio(){
+  if(!soundOn()) return;
+  try{ const old=audioCtx; audioCtx=null; if(old&&old.state!=='closed') old.close().catch(()=>{}); }catch(e){}
+  unlockAudio();
+}
+['pointerdown','touchend','keydown'].forEach(t=>document.addEventListener(t,unlockAudio,{passive:true}));
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&audioCtx&&audioCtx.state!=='running'&&audioCtx.state!=='closed') audioCtx.resume().catch(()=>{}); });
+/* Toca los sonidos en cuanto el contexto está en marcha; si estaba pausado, lo reanuda antes */
+function withAudio(play){
+  const ctx=audioCtx; if(!ctx||ctx.state==='closed') return;
+  if(ctx.state==='running'){ play(ctx); return; }
+  let done=false;
+  const go=()=>{ if(done) return; done=true; if(ctx.state==='running') play(ctx); };
+  try{ ctx.resume().then(go,()=>{}); }catch(e){}
+  setTimeout(go,400);
+}
+function tone(ctx, freq, dur, at=0, vol=.35, type='sine'){
   try{
-    const t=audioCtx.currentTime+at, o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    const t=ctx.currentTime+0.02+at, o=ctx.createOscillator(), g=ctx.createGain();
     o.type=type; o.frequency.value=freq;
     g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.008);
     g.gain.setValueAtTime(vol,t+Math.max(0.01,dur-0.04)); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
-    o.connect(g).connect(audioOut||audioCtx.destination); o.start(t); o.stop(t+dur+0.03);
+    o.connect(g).connect(ctx===audioCtx&&audioOut?audioOut:ctx.destination); o.start(t); o.stop(t+dur+0.03);
   }catch(e){}
 }
 const soundOn=()=>S.settings.sound!==false;
-/* En iPhone (Safari 17+), un sonido «transient» baja un momento la música de otras apps */
-let duckTimer=null;
-function duckOthers(ms){
-  try{
-    if(!navigator.audioSession) return;
-    navigator.audioSession.type='transient';
-    clearTimeout(duckTimer); duckTimer=setTimeout(()=>{ try{ navigator.audioSession.type='ambient'; }catch(e){} }, ms);
-  }catch(e){}
-}
-function soundTick(){ if(soundOn()){ beep(1320,.1,0,.5,'triangle'); beep(2640,.1,0,.18,'sine'); } }
+function soundTick(){ if(soundOn()) withAudio(c=>{ tone(c,1320,.1,0,.5,'triangle'); tone(c,2640,.1,0,.18,'sine'); }); }
 /* Fin del descanso: tres ráfagas de dos tonos agudos (1,7-2,6 kHz), que destacan sobre la música */
 function soundEnd(){
   if(!soundOn()) return;
-  duckOthers(1800);
-  [0,.34,.68].forEach(t=>{
-    beep(1760,.14,t,.55,'square'); beep(880,.14,t,.35,'triangle');
-    beep(2637,.16,t+.15,.55,'square'); beep(1319,.16,t+.15,.35,'triangle');
-  });
+  withAudio(c=>{ [0,.34,.68].forEach(t=>{
+    tone(c,1760,.14,t,.55,'square'); tone(c,880,.14,t,.35,'triangle');
+    tone(c,2637,.16,t+.15,.55,'square'); tone(c,1319,.16,t+.15,.35,'triangle');
+  }); });
 }
 
 /* Notificaciones push: funcionan con la app instalada (en el móvil, añadida a la pantalla de inicio). */
@@ -1705,7 +1772,7 @@ async function scheduleRestPush(f){
   if(pushStatus()!=='on'||!f||f.phase!=='rest') return;
   const left=(f.restEnd-Date.now())/1000; if(left<4) return;
   const sub=await pushSub(); if(!sub) return;
-  const nx=f.next, nex=nx&&S.active&&S.active.exercises[fIdx(nx.k)], nm=nex&&exById(nex.exId);
+  const nx=S.active&&nextPending(f), nex=nx&&S.active.exercises[fIdx(nx.k)], nm=nex&&exById(nex.exId);
   const body=nm?`Siguiente: ${nm.name}, ${setPos(nex,nx.si).label.toLowerCase()}`:'Empieza la siguiente serie.';
   const id=f.pushId||alarmId(); f.pushId=id; f.pushCancelled=false; saveActive();
   try{ await pushCall({action:'schedule', id, subscription:sub.toJSON(), delay:Math.round(left), title:'Descanso terminado', body}); }catch(e){}
@@ -1739,7 +1806,15 @@ const A = {
   'set-del'(el){ const ex=S.active.exercises[+el.dataset.ei]; if(ex.sets.length>1) ex.sets.pop(); saveActive(); render(); },
   'ex-up'(el){ closeModal(); move(S.active.exercises,+el.dataset.ei,-1); saveActive(); render(); },
   'ex-down'(el){ closeModal(); move(S.active.exercises,+el.dataset.ei,1); saveActive(); render(); },
-  async 'ex-del'(el){ closeModal(); const ei=+el.dataset.ei; const ex=S.active.exercises[ei]; if(ex.sets.some(s=>s.done) && !(await ask('Quitar ejercicio',`Tiene series marcadas como hechas. Se quitarán de este entreno.`,'Quitar',true))) return; const f=F(); if(f&&(f.k===ex.k||(f.next&&f.next.k===ex.k))) S.active.focus=null; S.active.exercises.splice(ei,1); saveActive(); render(); renderFocus(); },
+  async 'ex-del'(el){ closeModal(); const ei=+el.dataset.ei; const ex=S.active.exercises[ei]; if(ex.sets.some(s=>s.done) && !(await ask('Quitar ejercicio',`Tiene series marcadas como hechas. Se quitarán de este entreno.`,'Quitar',true))) return;
+    const f=F(); if(f&&f.k===ex.k){ if(f.phase==='rest') f.ei=ei; else { cancelRestPush(f); S.active.focus=null; } }   // un descanso en marcha sigue
+    S.active.exercises.splice(ei,1); saveActive(); render(); renderFocus(); },
+  async 'ex-replace'(el){ closeModal(); const ei=+el.dataset.ei; const old=S.active.exercises[ei]; if(!old) return;
+    if(old.sets.some(s=>s.done) && !(await ask('Reemplazar ejercicio','Tiene series marcadas como hechas. Al reemplazarlo se quitarán de este entreno.','Elegir otro',false))) return;
+    openPicker(id=>{ const i=S.active.exercises.indexOf(old); if(i<0) return;
+      const ex=buildExercise(id, Math.max(1,workCount(old)), isCardio(exById(id))===isCardio(exById(old.exId))?old.target:'');
+      const f=F(); if(f&&f.k===old.k){ if(f.phase==='rest'){ f.k=ex.k; f.si=-1; } else S.active.focus=null; }
+      S.active.exercises[i]=ex; saveActive(); render(); renderFocus(); toast(`Reemplazado por ${exById(id).name}.`); }, 'Reemplazar ejercicio'); },
   'ex-add'(){ openPicker(id=>{ S.active.exercises.push(buildExercise(id,3,'')); saveActive(); render(); setTimeout(()=>window.scrollTo({top:document.body.scrollHeight}),30); }); },
   'ex-start'(el){ const ei=+el.dataset.ei; ensureKeys(); const f=F(); if(f&&f.k===S.active.exercises[ei].k){ f.open=true; saveActive(); renderFocus(); return; } startExercise(ei); },
   'f-hide'(){ const f=F(); if(f){ f.open=false; saveActive(); renderFocus(); } },
@@ -1758,17 +1833,16 @@ const A = {
   exrest(el){ const ex=S.active.exercises[+el.dataset.ei]; ex.rest=Math.min(600,Math.max(15,restFor(ex)+num(el.dataset.d))); saveActive(); render(); },
   'wk-min'(){ S.tab=S.lastTab||'progress'; render(); window.scrollTo(0,0); },
   'ex-menu'(el){ const ei=+el.dataset.ei; const ex=S.active.exercises[ei]; const n=S.active.exercises.length;
-    openModal(menuSheet(exById(ex.exId).name,[['lib-open','Ver ficha y progreso',`data-id="${ex.exId}"`], ei>0&&['ex-up','Mover arriba',`data-ei="${ei}"`], ei<n-1&&['ex-down','Mover abajo',`data-ei="${ei}"`], ['ex-del','Quitar del entreno',`data-ei="${ei}"`,true]])); },
+    openModal(menuSheet(exById(ex.exId).name,[['lib-open','Ver ficha y progreso',`data-id="${ex.exId}"`], ['ex-replace','Reemplazar ejercicio',`data-ei="${ei}"`], ei>0&&['ex-up','Mover arriba',`data-ei="${ei}"`], ei<n-1&&['ex-down','Mover abajo',`data-ei="${ei}"`], ['ex-del','Quitar del entreno',`data-ei="${ei}"`,true]])); },
   'ri-menu'(el){ const i=+el.dataset.i; const n=S.editing.items.length;
-    openModal(menuSheet(exById(S.editing.items[i].exId).name,[i>0&&['ri-up','Mover arriba',`data-i="${i}"`], i<n-1&&['ri-down','Mover abajo',`data-i="${i}"`], ['ri-del','Quitar de la rutina',`data-i="${i}"`,true]])); },
+    openModal(menuSheet(exById(S.editing.items[i].exId).name,[['ri-replace','Reemplazar ejercicio',`data-i="${i}"`], i>0&&['ri-up','Mover arriba',`data-i="${i}"`], i<n-1&&['ri-down','Mover abajo',`data-i="${i}"`], ['ri-del','Quitar de la rutina',`data-i="${i}"`,true]])); },
   cell(el){ openSetSheet(+el.dataset.ei,+el.dataset.si); },
   st(el){ const s=stSet(); const f=el.dataset.f, d=num(el.dataset.d);
     stepField(s,f,d); const i=$('#st-'+f); if(i) i.value=fieldVal(s,f);
     stRefresh([f]); },
   'st-copy'(){ const {ei,si}=S.setEdit; const last=lastPerf(S.active.exercises[ei].exId); const p=prevFor(S.active.exercises[ei],si,last); if(!p) return; const s=stSet(); { const m_=exById(S.active.exercises[ei].exId); fromPrev(s,p,m_); syncSets(S.active.exercises[ei], si, fieldsOf(m_)); } saveActive(); render(); openModal(setSheet()); },
-  'st-done'(){ const {ei}=S.setEdit; const ex=S.active.exercises[ei]; const s=stSet(); s.done=!s.done;
-    if(s.done){ if(s.r===''&&ex.target){ const t=parseInt(ex.target,10); if(isFinite(t)) s.r=String(t);} }
-    closeModal(); saveActive(); render(); },
+  'st-done'(){ const {ei,si}=S.setEdit; closeModal(); tickSet(ei,si); },
+  'set-tick'(el){ tickSet(+el.dataset.ei, +el.dataset.si); },
   'st-del'(){ const {ei,si}=S.setEdit; const ex=S.active.exercises[ei]; if(ex.sets.length<2) return; ex.sets.splice(si,1); const f=F(); if(f&&f.k===ex.k&&f.si>=si&&f.si>0) f.si--; closeModal(); saveActive(); render(); renderFocus(); },
   'routine-new'(){ S.tab='routines'; S.editing={id:uid(), name:'', items:[], isNew:true}; S.editOrig=JSON.stringify(S.editing); render(); window.scrollTo(0,0); setTimeout(()=>$('[data-in="r-name"]')?.focus(),40); },
   'routine-open'(el){ const r=S.routines.find(x=>x.id===el.dataset.id); S.editing=clone(r); S.editOrig=JSON.stringify(S.editing); render(); window.scrollTo(0,0); },
@@ -1779,6 +1853,9 @@ const A = {
   'ri-up'(el){ closeModal(); move(S.editing.items,+el.dataset.i,-1); render(); },
   'ri-down'(el){ closeModal(); move(S.editing.items,+el.dataset.i,1); render(); },
   'ri-del'(el){ closeModal(); S.editing.items.splice(+el.dataset.i,1); render(); },
+  'ri-replace'(el){ closeModal(); const it=S.editing.items[+el.dataset.i]; if(!it) return;
+    openPicker(id=>{ const i=S.editing.items.indexOf(it); if(i<0) return; const same=isCardio(exById(id))===isCardio(exById(it.exId));
+      S.editing.items[i]= same ? {...it, exId:id} : (isCardio(exById(id))?{exId:id, sets:1, reps:'30'}:{exId:id, sets:3, reps:'8-12'}); render(); }, 'Reemplazar ejercicio'); },
   'ri-add'(){ openPicker(id=>{ S.editing.items.push(isCardio(exById(id))?{exId:id, sets:1, reps:'30'}:{exId:id, sets:3, reps:'8-12'}); render(); }); },
   'hist-toggle'(el){ S.openSession = S.openSession===el.dataset.id?null:el.dataset.id; render(); },
   async 'hist-del'(el){ const id=el.dataset.id; if(!(await ask('Borrar entreno','Este entreno desaparecerá del historial y de las gráficas.','Borrar',true))) return; S.sessions=S.sessions.filter(s=>s.id!==id); Store.dropSession(id); S.openSession=null; render(); },
@@ -1815,6 +1892,67 @@ const A = {
   export(){ doExport(); }
 };
 function move(arr,i,d){ const j=i+d; if(j<0||j>=arr.length) return; [arr[i],arr[j]]=[arr[j],arr[i]]; }
+function moveTo(arr,from,to){ if(from===to||from<0||to<0||from>=arr.length||to>=arr.length) return; arr.splice(to,0,arr.splice(from,1)[0]); }
+
+/* ---------- Reordenar arrastrando desde el asa lateral ---------- */
+const SORT = {
+  ex(from,to){ moveTo(S.active.exercises,from,to); saveActive(); render(); renderFocus(); },
+  ri(from,to){ moveTo(S.editing.items,from,to); render(); }
+};
+let sortDrag=null;
+document.addEventListener('pointerdown',e=>{
+  const h=e.target.closest('[data-drag]'); if(!h||sortDrag||(e.pointerType==='mouse'&&e.button!==0)) return;
+  const item=h.closest('[data-sort]'); if(!item) return;
+  e.preventDefault();
+  const list=item.parentElement, items=[...list.children].filter(x=>x.hasAttribute('data-sort'));
+  if(items.length<2) return;
+  const sy=window.scrollY, rects=items.map(x=>{ const r=x.getBoundingClientRect(); return {top:r.top+sy, h:r.height}; });
+  const from=items.indexOf(item);
+  const gap=rects.length>1 ? Math.max(0, rects[1].top-(rects[0].top+rects[0].h)) : 0;
+  sortDrag={kind:h.dataset.drag, item, items, rects, from, to:from, gap, y0:e.clientY+sy, y:e.clientY, id:e.pointerId, raf:0};
+  try{ h.setPointerCapture(e.pointerId); }catch(_){}
+  document.body.classList.add('sorting'); item.classList.add('dragging');
+  items.forEach(x=>{ if(x!==item) x.style.transition='transform .15s ease'; });
+  vib(15);
+  const loop=()=>{ if(!sortDrag) return; autoScroll(); sortMove(); sortDrag.raf=requestAnimationFrame(loop); };
+  sortDrag.raf=requestAnimationFrame(loop);
+});
+function autoScroll(){
+  const d=sortDrag, edge=90, bottom=window.innerHeight-(document.body.classList.contains('in-workout')?80:70);
+  const sy=window.scrollY, first=d.rects[0], last=d.rects[d.rects.length-1];
+  if(d.y<edge && sy>first.top-edge) window.scrollBy(0,-Math.ceil((edge-d.y)/6));
+  else if(d.y>bottom-edge && sy+bottom<last.top+last.h+edge) window.scrollBy(0,Math.ceil((d.y-(bottom-edge))/6));
+}
+function sortMove(){
+  const d=sortDrag, sy=window.scrollY;
+  const r=d.rects[d.from], first=d.rects[0], last=d.rects[d.rects.length-1];
+  // La tarjeta no sale de la lista (si no, la página crecería y el desplazamiento automático no pararía)
+  const dy=Math.max(first.top-r.top, Math.min(last.top+last.h-(r.top+r.h), d.y+sy-d.y0));
+  // Bajando cuenta el borde inferior de la tarjeta y subiendo el superior: así las tarjetas altas se mueven sin tener que arrastrarlas tanto
+  const top=r.top+dy, bot=top+r.h;
+  let to=d.from;
+  const ctr=i=>d.rects[i].top+d.rects[i].h/2;
+  for(let i=d.from+1;i<d.rects.length;i++) if(bot>ctr(i)) to=i;
+  if(to===d.from) for(let i=d.from-1;i>=0;i--) if(top<ctr(i)) to=i;
+  d.to=to;
+  d.item.style.transform=`translateY(${dy}px)`;
+  const shift=r.h+d.gap;
+  d.items.forEach((x,i)=>{ if(x===d.item) return;
+    const t = (d.from<to && i>d.from && i<=to) ? -shift : (to<d.from && i>=to && i<d.from) ? shift : 0;
+    x.style.transform = t?`translateY(${t}px)`:''; });
+}
+document.addEventListener('pointermove',e=>{ if(!sortDrag||e.pointerId!==sortDrag.id) return; e.preventDefault(); sortDrag.y=e.clientY; },{passive:false});
+function sortEnd(e){
+  if(!sortDrag||(e&&e.pointerId!==sortDrag.id)) return;
+  const d=sortDrag; sortDrag=null; cancelAnimationFrame(d.raf);
+  document.body.classList.remove('sorting');
+  d.items.forEach(x=>{ x.style.transform=''; x.style.transition=''; x.classList.remove('dragging'); });
+  if(d.to!==d.from && SORT[d.kind]) SORT[d.kind](d.from,d.to);
+}
+document.addEventListener('pointerup',sortEnd);
+document.addEventListener('pointercancel',sortEnd);
+/* En iPhone, evita que la página se desplace mientras arrastras */
+document.addEventListener('touchmove',e=>{ if(sortDrag) e.preventDefault(); },{passive:false});
 
 const INPUT = {
   'set-w'(el){ const ei=+el.dataset.ei; S.active.exercises[ei].sets[+el.dataset.si].w=el.value; const pl=$('#pl-'+ei); if(pl) pl.innerHTML=platesHTML(S.active.exercises[ei]); saveActive(); },

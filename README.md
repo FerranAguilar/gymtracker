@@ -8,6 +8,10 @@ Es una web estática: HTML, CSS y JavaScript sin proceso de compilación. Los da
 
 - **Rutinas**: crea plantillas con ejercicios, series y repeticiones objetivo (admite rangos como `8-12`).
 - **Entrenamiento serie a serie**: pulsa «Empezar ejercicio» para abrir una ventana grande con los kg y las repeticiones de cada serie. «Serie acabada» lanza el descanso, que se puede ajustar ±15 s, y la siguiente serie empieza sola al terminar.
+- **Tic de serie hecha**: el tic a la derecha de cada serie la marca como hecha sin abrirla y empieza su descanso. Si marcas varias seguidas, manda el descanso de la última. Volver a tocarlo la desmarca.
+- **El descanso va por su cuenta**: puedes cambiar, mover, reemplazar o quitar ejercicios mientras corre; la siguiente serie se decide al terminar.
+- **Ordenar arrastrando**: arrastra un ejercicio desde el asa de la izquierda (⋮⋮) para cambiar el orden, en el entreno y en las rutinas. También están «Mover arriba» y «Mover abajo» en el menú ⋯.
+- **Reemplazar ejercicio**: en el menú ⋯ de cada ejercicio. El nuevo ocupa el mismo sitio, con las mismas series y objetivo, y con tus pesos de la última vez.
 - **Series de calentamiento**: botón «Calentamiento» en cada ejercicio. Añade arriba series con peso creciente (siempre por debajo de la primera serie) y repeticiones decrecientes, sin descanso entre ellas. Se ajustan solas si cambias el peso de la primera serie, el ejercicio las recuerda para la próxima vez. Suman al tonelaje, pero no cuentan para los récords, el 1RM ni el número de series.
 - **Descanso por ejercicio**, editable desde la propia pantalla del entrenamiento.
 - **Memoria por ejercicio**: cada ejercicio recuerda las series, kg, repeticiones y descanso de la última vez.
@@ -67,7 +71,9 @@ Se abre a pantalla completa, como una app, y funciona sin cobertura.
 
 ## Avisos del descanso
 
-**Sonido.** Pitidos en los 3 últimos segundos del descanso y una alarma al terminar: tres ráfagas de tonos agudos (1,7-2,6 kHz) para que se oiga aunque estés escuchando música. En iPhone con Safari 17 o posterior, la app pide al sistema que baje un momento la música mientras suena. Se activa o desactiva en **Ajustes → Avisos del descanso**. Suena con la app en pantalla (la app mantiene la pantalla encendida durante el entreno). En iPhone no suena con el modo silencio activado.
+**Sonido.** Pitidos en los 3 últimos segundos del descanso y una alarma al terminar: tres ráfagas de tonos agudos (1,7-2,6 kHz) para que se oiga aunque estés escuchando música. Suena por encima de la música sin pararla, también con auriculares. Se activa o desactiva en **Ajustes → Avisos del descanso**. Suena con la app en pantalla (la app mantiene la pantalla encendida durante el entreno).
+
+Para que no se quede mudo: el audio se prepara de nuevo cada vez que empieza un descanso (si cambias de altavoz a auriculares, el anterior podía quedarse sin salida) y, si el sistema lo ha pausado por la música de otra app, una llamada o la pantalla bloqueada, se reanuda antes de sonar. En iPhone se usa la sesión de audio «ambient», la que se mezcla con tu música; el modo silencio la apaga aunque lleves auriculares, así que para oír el aviso hay que quitarlo. Las webs no pueden saltarse el modo silencio sin parar tu música.
 
 **Notificaciones push.** Avisan al acabar el descanso aunque el móvil esté bloqueado o estés en otra app. Se activan en **Ajustes → Avisos del descanso → Activar notificaciones**, y allí mismo puedes enviar una prueba.
 
@@ -129,7 +135,7 @@ Si has usado la app publicada en Claude, sus datos están guardados en tu cuenta
 
 ## Actualizar la app
 
-Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v7` a `gymtracker-v8`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
+Después de cambiar cualquier archivo, sube la versión de `CACHE` en `sw.js` (por ejemplo, de `gymtracker-v8` a `gymtracker-v9`). Así los móviles que la tienen instalada descargan los archivos nuevos. Puede hacer falta cerrar y volver a abrir la app una vez.
 
 ## Notas técnicas
 

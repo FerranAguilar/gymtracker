@@ -326,9 +326,26 @@ body.in-workout #restbar{bottom:calc(var(--wkh) + env(safe-area-inset-bottom,0px
 #pk-list{flex:1 1 auto;min-height:0}
 @media (prefers-reduced-motion: reduce){.pill .pulse{animation:none}}
 /* ---- Set-by-set mode ---- */
-.set{grid-template-columns:1.6rem minmax(3.4rem,1fr) 5.2rem 4.4rem 1.8rem}
-.st-ic{display:grid;place-items:center;color:var(--done)}
-.st-ic svg{width:18px;height:18px}
+.set{grid-template-columns:1.6rem minmax(3.2rem,1fr) 4.9rem 4.2rem 2.9rem}
+/* Tic de serie hecha */
+.st-ic{display:grid;place-items:center;width:100%;height:44px;padding:0;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:transparent;transition:background .12s,border-color .12s}
+.st-ic svg{width:20px;height:20px}
+.st-ic:active{transform:scale(.9)}
+.st-ic.on{background:var(--done);border-color:var(--done);color:#fff}
+.set:not(.done) .st-ic{color:color-mix(in srgb,var(--muted) 45%,transparent)}
+/* Asa para reordenar arrastrando */
+.drag-h{flex:none;display:grid;place-items:center;width:28px;min-height:40px;margin:0 -2px 0 -8px;color:var(--muted);cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.drag-h svg{width:18px;height:18px}
+.ri{grid-template-columns:20px 1fr 44px;column-gap:8px}
+.ri-nums{gap:5px}
+.ri-nums span{white-space:nowrap}
+.ri .ri-nums input{width:3rem}
+.ri .ri-nums input.reps{width:4.2rem}
+.ri .drag-h{grid-row:1 / span 2;grid-column:1;margin:0 0 0 -8px;width:28px}
+.ri .ri-name,.ri .ri-nums{grid-column:2}
+.ri .ri-tools{grid-column:3}
+[data-sort].dragging{position:relative;z-index:30;box-shadow:0 10px 28px rgba(0,0,0,.28);transition:none!important}
+body.sorting,body.sorting *{-webkit-user-select:none;user-select:none;cursor:grabbing}
 .set.current{background:color-mix(in srgb,var(--accent) 13%,transparent)}
 .ex.focus{box-shadow:0 0 0 2px var(--accent)}
 .ex-rest{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0 2px;padding-top:10px;border-top:1px solid var(--line);font-weight:600;font-size:.95rem}
